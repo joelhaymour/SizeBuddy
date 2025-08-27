@@ -1,0 +1,50 @@
+<div class="size-buddy-widget" id="size-buddy-widget" data-product-id="{{ product.id }}" data-shop-domain="{{ shop.permanent_domain }}">
+  <button class="size-buddy-button">Size Buddy</button>
+  <div class="size-buddy-content"></div>
+</div>
+
+<script>
+  (function() {
+    // Create a function to initialize the widget
+    function initializeSizeBuddy() {
+      // Remove any existing Size Buddy scripts first to avoid conflicts
+      const existingScripts = document.querySelectorAll('script[src*="size-buddy"]');
+      existingScripts.forEach(script => script.remove());
+      
+      // Load the Size Buddy widget script with cache-busting parameter
+      const script = document.createElement('script');
+      script.src = 'https://808c4044a8b2.ngrok.app/widget-script?v=4.0.0&_=' + Date.now();
+      script.async = true;
+      
+      // Add load event listener to ensure script is fully loaded
+      script.onload = function() {
+        console.log('Size Buddy V4: Script loaded successfully');
+        // Dispatch a custom event to trigger widget initialization
+        document.dispatchEvent(new CustomEvent('sizeBuddyScriptLoaded'));
+      };
+      
+      script.onerror = function(error) {
+        console.error('Size Buddy V4: Failed to load script:', error);
+      };
+      
+      document.body.appendChild(script);
+      
+      console.log('Size Buddy V4: Loading modal widget for product {{ product.id }} from shop {{ shop.permanent_domain }}');
+    }
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeSizeBuddy);
+    } else {
+      initializeSizeBuddy();
+    }
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Size Buddy",
+  "target": "section",
+  "settings": []
+}
+{% endschema %} 

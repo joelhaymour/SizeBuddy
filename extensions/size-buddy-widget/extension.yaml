@@ -1,0 +1,20 @@
+name: size-buddy-widget
+description: Size Buddy widget for product pages
+type: theme
+runtime_context: strict
+metafields:
+  - namespace: size-buddy
+    key: size-chart
+    description: Size chart data for products
+    type: json
+  - namespace: size-buddy
+    key: widget-settings
+    description: Widget display settings
+    type: json
+capabilities:
+  network_access: true
+  block_progress: true
+  api_access: true
+extension_points:
+  - target: section
+    module: ./blocks/app 

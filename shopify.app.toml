@@ -1,0 +1,33 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "2f04ec2176fa381f9554da22c41aebb0"
+application_url = "https://808c4044a8b2.ngrok.app"
+embedded = true
+name = "size-buddy"
+handle = "size-buddy-v6-testing"
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2025-01"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products read_products write_customers read_customers read_themes write_themes"
+
+[auth]
+redirect_urls = [
+      "https://808c4044a8b2.ngrok.app/auth/callback",
+          "https://808c4044a8b2.ngrok.app/auth/shopify/callback",
+          "https://808c4044a8b2.ngrok.app/api/auth/callback"
+]
+
+[pos]
+embedded = false
+
+[app_proxy]
+  url = "https://808c4044a8b2.ngrok.app"
+prefix = "apps"
+subpath = "size-buddy"

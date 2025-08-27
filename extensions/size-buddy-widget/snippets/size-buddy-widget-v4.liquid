@@ -1,0 +1,33 @@
+{% comment %}
+  Size Buddy Widget Snippet (Modal Version)
+  This snippet can be included in product templates to display the Size Buddy widget.
+  
+  Usage:
+  {% render 'size-buddy-widget-v4', product: product %}
+{% endcomment %}
+
+{% if settings.show_widget %}
+<div id="size-buddy-widget" 
+     data-position="{{ settings.widget_position | default: 'below' }}" 
+     data-style="{{ settings.widget_style | default: 'default' }}"
+     data-product-id="{{ product.id }}"
+     data-shop-domain="{{ shop.permanent_domain }}">
+  <!-- Widget content will be loaded via JavaScript -->
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Remove any existing Size Buddy scripts first to avoid conflicts
+    const existingScripts = document.querySelectorAll('script[src*="size-buddy"]');
+    existingScripts.forEach(script => script.remove());
+    
+    // Load the Size Buddy widget script from local assets
+    const script = document.createElement('script');
+    script.src = '{{ "size-buddy-v4.js" | asset_url }}';
+    script.async = true;
+    document.body.appendChild(script);
+    
+    console.log('Size Buddy V4: Loading local widget for product {{ product.id }} from shop {{ shop.permanent_domain }}');
+  });
+</script>
+{% endif %} 

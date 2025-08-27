@@ -1,0 +1,11 @@
+name: size-buddy-widget
+type: theme_app_extension
+handle: size-buddy-widget
+extension_points:
+  - name: app_block
+    target: section
+    module:
+      - name: size-buddy
+        source: blocks/size-buddy.liquid
+        stylesheet: assets/size-buddy.css
+        javascript: assets/size-buddy.js 

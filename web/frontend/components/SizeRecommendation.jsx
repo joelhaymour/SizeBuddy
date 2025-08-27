@@ -1,0 +1,1528 @@
+import {
+  LegacyCard,
+  Button,
+  Text,
+  Box,
+  Modal,
+  TextField,
+  LegacyStack,
+  ResourceList,
+  ResourceItem,
+  Badge,
+  Icon,
+  Banner,
+  Frame,
+  Loading,
+  Toast,
+  SkeletonBodyText,
+  Layout,
+  EmptyState,
+  ButtonGroup,
+  Card,
+  Grid,
+  DataTable,
+  Spinner,
+  RangeSlider
+} from "@shopify/polaris";
+import { ResourcePicker } from "@shopify/app-bridge-react";
+import {
+  CircleTickMajor,
+  CirclePlusMajor,
+  CircleInformationMajor
+} from '@shopify/polaris-icons';
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useSizeBuddyFetch } from '../utils/useSizeBuddyFetch';
+import { defaultSizeCharts } from '../templates/default-size-charts';
+import { useNavigate } from 'react-router-dom';
+import { useAppBridge } from '@shopify/app-bridge-react';
+import { useTranslation } from 'react-i18next';
+
+export function SizeRecommendation({ shop, host }) {
+  const navigate = useNavigate();
+  const app = useAppBridge();
+  const { t } = useTranslation();
+  const fetch = useSizeBuddyFetch();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [step, setStep] = useState('category'); // 'category', 'details', 'chart'
+  const [chartName, setChartName] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedFitType, setSelectedFitType] = useState('');
+  const [sizeRecommendations, setSizeRecommendations] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [toastProps, setToastProps] = useState({ content: '', error: false });
+  const [showToast, setShowToast] = useState(false);
+  const [currentSizeRecommendation, setCurrentSizeRecommendation] = useState(null);
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [isResourcePickerOpen, setIsResourcePickerOpen] = useState(false);
+  const isMounted = useRef(true);
+  const [editingRecommendationId, setEditingRecommendationId] = useState(null);
+  const [limitBanner, setLimitBanner] = useState(false);
+
+  // Add custom styles for the modal
+  useEffect(() => {
+    // Create a style element
+    const styleEl = document.createElement('style');
+    
+    // Add CSS rules to override Polaris modal width
+    styleEl.innerHTML = `
+      .Polaris-Modal-Dialog__Modal {
+        display: flex !important;
+        flex-direction: column !important;
+        max-width: 95vw !important;
+        width: 1000px !important;
+      }
+      
+      .Polaris-Modal-Dialog__Container, 
+      .Polaris-Modal-Dialog__Modal,
+      .Polaris-Modal__Container,
+      .Polaris-Modal-Section {
+        max-width: 95vw !important;
+        width: auto !important;
+      }
+      
+      .Polaris-Modal-Dialog__Container {
+        display: flex;
+        justify-content: center;
+      }
+    `;
+    
+    // Add the style element to the document head
+    document.head.appendChild(styleEl);
+    
+    // Clean up when component unmounts
+    return () => {
+      document.head.removeChild(styleEl);
+    };
+  }, []);
+
+  // Fetch existing size charts
+  const fetchSizeRecommendations = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // Ensure shop parameter has full domain
+      const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
+      
+      console.log(`Fetching size recommendations for shop: ${fullShopDomain}`);
+      
+      // Include shop parameter in URL
+      const response = await fetch(`/api/size-recommendations?shop=${fullShopDomain}`);
+      
+      console.log('API response:', {
+        status: response.status,
+        ok: response.ok,
+        redirected: response.redirected,
+        url: response.url
+      });
+      
+      if (!response.ok) {
+        if (response.status === 403) {
+          setLimitBanner(true);
+          return;
+        }
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`Server returned ${response.status}: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Received data:', data);
+      if (isMounted.current) setSizeRecommendations(data);
+    } catch (error) {
+      console.error('Error fetching size recommendations:', error);
+      setToastProps({
+        content: `Failed to load size recommendations: ${error.message}`,
+        error: true
+      });
+      setShowToast(true);
+    } finally {
+      if (isMounted.current) setIsLoading(false);
+    }
+  }, [fetch, shop]);
+
+  useEffect(() => {
+    fetchSizeRecommendations();
+    return () => {
+      isMounted.current = false;
+    };
+  }, [fetchSizeRecommendations]);
+
+  const handleModalOpen = () => {
+    console.log('Opening modal');
+    setIsModalOpen(true);
+    setStep('category');
+    setSelectedCategory('');
+    setSelectedFitType('');
+    setChartName('');
+    setSelectedProducts([]);
+    setCurrentSizeRecommendation(null);
+    console.log('Modal state reset');
+  };
+
+  const handleModalClose = () => {
+    console.log('Closing modal');
+    setIsModalOpen(false);
+    setStep('category');
+    setSelectedCategory('');
+    setSelectedFitType('');
+    setChartName('');
+    setSelectedProducts([]);
+    setCurrentSizeRecommendation(null);
+    console.log('Modal state reset');
+  };
+
+  const handleCategorySelect = (category) => {
+    console.log('Category selected:', category);
+    setSelectedCategory(category);
+    if (category !== 'Bikini Tops / Bras') {
+      console.log('Moving to details step');
+      setStep('details');
+    } else {
+      console.log('Moving to details step');
+      setStep('details');
+    }
+  };
+
+  const handleProductSelect = useCallback(async ({ selection }) => {
+    // Log the selection to understand its structure
+    console.log('Product Selection:', selection);
+    
+    // Format selected products and fetch actual images from Shopify
+    const formattedProducts = await Promise.all(selection.map(async (product) => {
+      const productId = product.id.replace('gid://shopify/Product/', ''); // Extract numeric ID
+      
+      // Try to get image from the selection first
+      let imageUrl = null;
+      
+      console.log('Product image data:', {
+        title: product.title,
+        hasImages: product.images && product.images.length > 0,
+        hasFeaturedImage: !!product.featuredImage,
+        images: product.images,
+        featuredImage: product.featuredImage
+      });
+      
+      if (product.images && product.images.length > 0) {
+        imageUrl = product.images[0].originalSrc;
+      } else if (product.featuredImage) {
+        imageUrl = product.featuredImage.originalSrc;
+      }
+      
+      // If we don't have a valid image URL, try to fetch it from Shopify
+      if (!imageUrl || imageUrl.includes('unsplash') || imageUrl.includes('sizebuddy_app_pic.png')) {
+        try {
+          console.log(`Fetching actual image for product ${productId} from Shopify...`);
+          
+          // Use the authenticated fetch to get product details from Shopify Admin API
+          const response = await fetch(`/admin/api/2024-01/products/${productId}.json`, {
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.product?.image?.src) {
+              imageUrl = data.product.image.src;
+              console.log(`Successfully fetched image for ${product.title}: ${imageUrl}`);
+            } else {
+              console.log(`No image found for ${product.title} in Shopify`);
+            }
+          } else {
+            console.log(`Failed to fetch image for ${product.title}: ${response.status}`);
+          }
+        } catch (error) {
+          console.error(`Error fetching image for ${product.title}:`, error);
+        }
+      } else {
+        console.log(`Using existing image for ${product.title}: ${imageUrl}`);
+      }
+      
+      return {
+        id: productId,
+        title: product.title,
+        handle: product.handle,
+        image: imageUrl
+      };
+    }));
+    
+    console.log('Formatted Products with actual images:', formattedProducts);
+    setSelectedProducts(formattedProducts);
+    setIsResourcePickerOpen(false);
+    setStep('chart');
+  }, [shop, host]);
+
+  const handleFitTypeSelect = (fitType) => {
+    setSelectedFitType(fitType);
+    
+    // Get default chart based on selections
+    let defaultChart;
+    
+    console.log('Selecting fit type:', {
+      category: selectedCategory,
+      fitType
+    });
+    
+    try {
+      if (selectedCategory === 'Bikini Tops / Bras') {
+        defaultChart = defaultSizeCharts[selectedCategory][fitType];
+        console.log('Selected regular chart:', defaultChart);
+      } else {
+        defaultChart = defaultSizeCharts[selectedCategory][fitType];
+        console.log('Selected regular chart:', defaultChart);
+      }
+      
+      if (!defaultChart) {
+        console.error('Could not find default chart for:', {
+          category: selectedCategory,
+          fitType
+        });
+        return;
+      }
+      
+      // Ensure the measurements are in the correct format
+      const formattedChart = {
+        ...defaultChart,
+        sizes: defaultChart.sizes.map(size => {
+          const formattedSize = { ...size };
+          
+          // Only process properties that exist
+          if (size.height) {
+            formattedSize.height = size.height.includes('-') ? size.height : `${size.height}-${size.height}`;
+          }
+          
+          if (size.weight) {
+            formattedSize.weight = size.weight.includes('-') ? size.weight : `${size.weight}-${size.weight}`;
+          }
+          
+          if (size.waist) {
+            formattedSize.waist = size.waist.includes('-') ? size.waist : `${size.waist}-${size.waist}`;
+          }
+          
+          if (size.hip) {
+            formattedSize.hip = size.hip.includes('-') ? size.hip : `${size.hip}-${size.hip}`;
+          }
+          
+          if (size.dress_size) {
+            formattedSize.dress_size = size.dress_size.includes('-') ? size.dress_size : `${size.dress_size}-${size.dress_size}`;
+          }
+          
+          if (size.cup_size) {
+            formattedSize.cup_size = size.cup_size;
+          }
+          
+          return formattedSize;
+        })
+      };
+      
+      setCurrentSizeRecommendation(formattedChart);
+      setIsResourcePickerOpen(true);
+    } catch (error) {
+      console.error('Error in handleFitTypeSelect:', error);
+    }
+  };
+
+  // Debug function to help diagnose image issues
+  const debugProductImages = (products) => {
+    if (!products || products.length === 0) {
+      console.log('No products to debug');
+      return;
+    }
+    
+    console.log('=== PRODUCT IMAGE DEBUG ===');
+    products.forEach((product, index) => {
+      console.log(`Product ${index}: ${product.title}`);
+      console.log(`- ID: ${product.id}`);
+      console.log(`- Handle: ${product.handle}`);
+      console.log(`- Image URL: ${product.image || 'None'}`);
+      
+      // Check if image URL is valid
+      if (product.image) {
+        const img = new Image();
+        img.onload = () => console.log(`- Image loaded successfully for ${product.title}`);
+        img.onerror = () => console.log(`- Image failed to load for ${product.title}`);
+        img.src = product.image;
+      }
+    });
+    console.log('=== END DEBUG ===');
+  };
+
+  const handleEdit = async (chart) => {
+    console.log('Editing chart:', chart);
+    
+    setEditingRecommendationId(chart.id);
+    setChartName(chart.name);
+    setSelectedCategory(chart.category);
+    setSelectedFitType(chart.fit_type);
+    
+    // Handle chart_data properly whether it's a string or an object
+    try {
+      let parsedChartData;
+      
+      if (typeof chart.chart_data === 'string') {
+        try {
+          parsedChartData = JSON.parse(chart.chart_data);
+        } catch (error) {
+          console.error('Error parsing chart_data as JSON:', error);
+          console.log('Raw chart_data:', chart.chart_data);
+          // If parsing fails, try to use it as is
+          parsedChartData = chart.chart_data;
+        }
+      } else {
+        // If it's already an object, use it directly
+        parsedChartData = chart.chart_data;
+      }
+      
+      console.log('Parsed chart data:', parsedChartData);
+      setCurrentSizeRecommendation(parsedChartData);
+    } catch (error) {
+      console.error('Error processing chart data:', error);
+      // Show an error toast
+      setToastProps({
+        content: `Error processing chart data: ${error.message}`,
+        error: true
+      });
+      setShowToast(true);
+      return;
+    }
+    
+    // Debug the raw products data from the chart
+    console.log('Raw products data from chart:', chart.products);
+    
+    // Format products for ResourcePicker, using the same approach as handleProductSelect
+    const formattedProducts = chart.products ? chart.products.map(product => {
+      console.log('Processing product for edit:', product);
+      
+      // Use the same image URL handling as in handleProductSelect
+      let imageUrl = product.product_image;
+      
+      // If we don't have an image URL, use a default one that we know works
+      if (!imageUrl) {
+        imageUrl = 'https://cdn.shopify.com/s/files/1/0685/6065/0425/files/sizebuddy_app_pic.png?v=1740975922';
+        console.log(`No image found for product: ${product.product_title}, using default`);
+      } else {
+        console.log(`Found image for ${product.product_title}: ${imageUrl}`);
+      }
+      
+      return {
+        id: product.product_id,
+        title: product.product_title,
+        handle: product.product_handle,
+        image: imageUrl
+      };
+    }) : [];
+    
+    console.log('Editing chart products:', formattedProducts);
+    // Run debug function
+    debugProductImages(formattedProducts);
+    
+    setSelectedProducts(formattedProducts);
+    setStep('chart');
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    try {
+      console.log('Save triggered - complete validation state:', {
+        chartName,
+        hasChartName: !!chartName,
+        selectedCategory,
+        hasSelectedCategory: !!selectedCategory,
+        selectedFitType,
+        hasSelectedFitType: !!selectedFitType,
+        currentSizeRecommendation: currentSizeRecommendation, 
+        hasCurrentSizeRecommendation: !!currentSizeRecommendation,
+        selectedProducts,
+        selectedProductsLength: selectedProducts.length
+      });
+      
+      if (!chartName || !selectedCategory || !selectedFitType || !currentSizeRecommendation || selectedProducts.length === 0) {
+        console.log('Validation failed, missing required fields:', {
+          chartName: !!chartName,
+          selectedCategory: !!selectedCategory,
+          selectedFitType: !!selectedFitType, 
+          currentSizeRecommendation: !!currentSizeRecommendation,
+          selectedProducts: selectedProducts.length > 0
+        });
+        
+        setToastProps({
+          content: 'Please fill in all required fields and select at least one product',
+          error: true
+        });
+        setShowToast(true);
+        return;
+      }
+
+      // Deep clone the current size recommendation to avoid reference issues
+      const processedSizeRecommendation = JSON.parse(JSON.stringify(currentSizeRecommendation));
+      
+      // Ensure all cup_size values are properly formatted as strings
+      if (processedSizeRecommendation && processedSizeRecommendation.sizes) {
+        processedSizeRecommendation.sizes = processedSizeRecommendation.sizes.map(size => {
+          const newSize = { ...size };
+          
+          // Ensure cup_size is a properly formatted string
+          if (newSize.cup_size !== undefined) {
+            // If it's not already a string or it doesn't include a dash, format it
+            if (typeof newSize.cup_size !== 'string' || !newSize.cup_size.includes('-')) {
+              const cupSizes = ['A', 'B', 'C', 'D', 'DD', 'DDD', 'F', 'G', 'H+'];
+              
+              // Handle case where it might be an object or array
+              let cupIndex = 0;
+              if (Array.isArray(newSize.cup_size) && newSize.cup_size.length > 0) {
+                cupIndex = Math.round(newSize.cup_size[0]);
+              } else if (typeof newSize.cup_size === 'number') {
+                cupIndex = Math.round(newSize.cup_size);
+              } else if (typeof newSize.cup_size === 'string' && !isNaN(parseInt(newSize.cup_size))) {
+                cupIndex = parseInt(newSize.cup_size);
+              }
+              
+              // Ensure index is within bounds
+              cupIndex = Math.max(0, Math.min(cupIndex, cupSizes.length - 2));
+              const nextIndex = Math.min(cupIndex + 1, cupSizes.length - 1);
+              
+              // Format as "A-B" string
+              newSize.cup_size = `${cupSizes[cupIndex]}-${cupSizes[nextIndex]}`;
+              console.log(`Formatted cup_size from ${size.cup_size} to ${newSize.cup_size}`);
+            }
+          }
+          
+          return newSize;
+        });
+      }
+
+      // Debug product images before saving
+      console.log('=== PRODUCTS BEFORE SAVING ===');
+      debugProductImages(selectedProducts);
+
+      // Ensure full shop domain is used
+      const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
+
+      const requestData = {
+        shop: fullShopDomain,
+        chart_name: chartName,
+        category: selectedCategory,
+        fit_type: selectedFitType,
+        chart_data: processedSizeRecommendation, // Use the processed data
+        products: selectedProducts.map(product => ({
+          id: product.id,
+          title: product.title,
+          handle: product.handle,
+          image: product.image
+        }))
+      };
+
+      // Log the data being sent
+      console.log('Sending data:', JSON.stringify(requestData, null, 2));
+
+      const url = editingRecommendationId 
+        ? `/api/size-recommendations/${editingRecommendationId}?shop=${fullShopDomain}` 
+        : '/api/size-recommendations';
+
+      const method = editingRecommendationId ? 'PUT' : 'POST';
+
+      console.log(`Making ${method} request to ${url}`);
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          console.error('Response was not JSON:', errorText);
+          errorData = { error: errorText || 'Unknown error' };
+        }
+        throw new Error(errorData.error || `Failed to ${editingRecommendationId ? 'update' : 'create'} size recommendation`);
+      }
+
+      const responseData = await response.json();
+      console.log('Save successful, response:', responseData);
+      
+      setToastProps({
+        content: `Size recommendation ${editingRecommendationId ? 'updated' : 'created'} successfully`,
+        error: false
+      });
+      setShowToast(true);
+      handleModalClose();
+      fetchSizeRecommendations();
+    } catch (error) {
+      console.error('Error saving size recommendation:', error);
+      setToastProps({
+        content: `Error saving size recommendation: ${error.message}`,
+        error: true
+      });
+      setShowToast(true);
+    }
+  };
+
+  const handleDelete = async (chartId) => {
+    try {
+      // Ensure full shop domain is used
+      const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
+      
+      const response = await fetch(`/api/size-recommendations/${chartId}?shop=${fullShopDomain}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete size recommendation');
+      }
+
+      setToastProps({
+        content: 'Size recommendation deleted successfully',
+        error: false
+      });
+      setShowToast(true);
+      fetchSizeRecommendations();
+    } catch (error) {
+      console.error('Error deleting size recommendation:', error);
+      setToastProps({
+        content: `Error deleting size recommendation: ${error.message}`,
+        error: true
+      });
+      setShowToast(true);
+    }
+  };
+
+  const renderCategorySelection = () => (
+    <Grid>
+      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
+        <Card sectioned>
+          <Button fullWidth onClick={() => handleCategorySelect('tops')}>
+            <Box padding="4" alignment="center">
+              <div style={{ width: '90px', height: '90px', marginBottom: '8px', color: 'var(--p-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* Classic T-shirt outline */}
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+                  <path d="M16 16 L8 24 L20 28 V52 H44 V28 L56 24 L48 16 L40 24 H24 L16 16 Z" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                  <path d="M24 28 V52 M44 28 V52" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                </svg>
+              </div>
+              <Text variant="headingMd" as="h3">Tops</Text>
+            </Box>
+          </Button>
+        </Card>
+      </Grid.Cell>
+      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
+        <Card sectioned>
+          <Button fullWidth onClick={() => handleCategorySelect('bottoms')}>
+            <Box padding="4" alignment="center">
+              <div style={{ width: '90px', height: '90px', marginBottom: '8px', color: 'var(--p-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* Classic pants outline */}
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+                  <rect x="20" y="16" width="24" height="36" rx="4" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                  <path d="M32 52 V32 M20 52 L28 32 M44 52 L36 32" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                </svg>
+              </div>
+              <Text variant="headingMd" as="h3">Bottoms</Text>
+            </Box>
+          </Button>
+        </Card>
+      </Grid.Cell>
+      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
+        <Card sectioned>
+          <Button fullWidth onClick={() => handleCategorySelect('dresses')}>
+            <Box padding="4" alignment="center">
+              <div style={{ width: '90px', height: '90px', marginBottom: '8px', color: 'var(--p-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* Classic dress outline */}
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+                  <circle cx="32" cy="20" r="6" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                  <path d="M26 26 Q32 32 38 26" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                  <path d="M20 52 L32 26 L44 52 Z" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                </svg>
+              </div>
+              <Text variant="headingMd" as="h3">Dresses</Text>
+            </Box>
+          </Button>
+        </Card>
+      </Grid.Cell>
+      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
+        <Card sectioned>
+          <Button fullWidth onClick={() => handleCategorySelect('Bikini Tops / Bras')}>
+            <Box padding="4" alignment="center">
+              <div style={{ width: '90px', height: '90px', marginBottom: '8px', color: 'var(--p-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* Classic bra outline */}
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+                  <path d="M16 48 Q20 32 32 32 Q44 32 48 48" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                  <ellipse cx="24" cy="44" rx="8" ry="10" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                  <ellipse cx="40" cy="44" rx="8" ry="10" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                  <path d="M16 48 Q32 56 48 48" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                  <path d="M16 32 Q20 24 24 32 M48 32 Q44 24 40 32" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                </svg>
+              </div>
+              <Text variant="headingMd" as="h3">Bikini Tops / Bras</Text>
+            </Box>
+          </Button>
+        </Card>
+      </Grid.Cell>
+    </Grid>
+  );
+
+  const renderFitTypeSelection = () => (
+    <>
+      <TextField
+        label="Chart Name"
+        value={chartName}
+        onChange={setChartName}
+        autoComplete="off"
+        helpText="Give your size recommendation a descriptive name"
+      />
+      <Box paddingBlockStart="4">
+        <Text variant="headingMd" as="h3">Select Fit Type</Text>
+        <ButtonGroup fullWidth>
+          <Button onClick={() => handleFitTypeSelect('slim')}>Slim Fit</Button>
+          <Button onClick={() => handleFitTypeSelect('regular')}>Regular Fit</Button>
+          <Button onClick={() => handleFitTypeSelect('loose')}>Loose Fit</Button>
+        </ButtonGroup>
+      </Box>
+    </>
+  );
+
+  const renderSizeRecommendation = () => {
+    if (!currentSizeRecommendation) return null;
+
+    const handleMeasurementChange = (sizeIndex, field, value) => {
+      const updatedSizeRecommendation = {
+        ...currentSizeRecommendation,
+        sizes: currentSizeRecommendation.sizes.map((size, index) => {
+          if (index === sizeIndex) {
+            const updatedSize = { ...size };
+            
+            // Update the field with the new value
+            updatedSize[field] = value;
+            
+            // For bikini tops, combine band size and cup size
+            if (selectedCategory === 'Bikini Tops / Bras') {
+              if (field === 'band_size' || field === 'cup_size') {
+                const bandSize = field === 'band_size' ? value : size.band_size;
+                const cupSize = field === 'cup_size' ? value : size.cup_size;
+                if (bandSize && cupSize) {
+                  // Format relative size using the ranges
+                  const [bandStart] = bandSize.split('-');
+                  const [cupStart] = cupSize.split('-');
+                  updatedSize.relative_size = `${bandStart}${cupStart}`;
+                }
+              }
+            }
+            return updatedSize;
+          }
+          return size;
+        })
+      };
+      console.log('Updating measurement:', { field, value, updatedSizeRecommendation });
+      setCurrentSizeRecommendation(updatedSizeRecommendation);
+    };
+
+    const renderMeasurementSlider = (sizeIndex, field, value, label, min, max, step = 1) => {
+      const cupSizes = ['A', 'B', 'C', 'D', 'DD', 'DDD', 'F', 'G', 'H+'];
+      const isCupSize = field === 'cup_size';
+      
+      // Add toggle switch for optional measurements
+      const isOptionalMeasurement = (field === 'hip' && selectedCategory === 'bottoms') || 
+                                  (field === 'band_size' && selectedCategory === 'Bikini Tops / Bras');
+      
+      const toggleId = `toggle-${field}-${sizeIndex}`;
+      
+      const parseValue = (val) => {
+        if (!val) return isCupSize ? [0, 1] : [min, min + (max - min) / 4];
+        
+        if (isCupSize) {
+          if (typeof val === 'string') {
+            const parts = val.split('-').map(p => p.replace('+', ''));
+            if (parts.length === 2) {
+              const startIdx = cupSizes.indexOf(parts[0]);
+              const endIdx = cupSizes.indexOf(parts[1]);
+              if (startIdx >= 0 && endIdx >= 0) {
+                return [startIdx, endIdx];
+              }
+            }
+            // If we can't parse the range, just use the first part
+            const cupIndex = cupSizes.indexOf(parts[0]);
+            return cupIndex >= 0 ? [cupIndex, Math.min(cupIndex + 1, cupSizes.length - 1)] : [0, 1];
+          }
+          return Array.isArray(val) ? val : [0, 1];
+        }
+        
+        if (typeof val === 'string') {
+          if (field === 'height') {
+            const parts = val.split('-');
+            let startValue, endValue;
+            
+            // Try to parse as feet'inches" format first
+            const feetInchesRegex = /(\d+)'(\d+)"/;
+            const startMatch = parts[0].trim().match(feetInchesRegex);
+            
+            if (startMatch) {
+              // Convert feet and inches to total inches
+              startValue = (parseInt(startMatch[1]) * 12) + parseInt(startMatch[2]);
+            } else {
+              // If not in feet'inches" format, try parsing as plain number
+              startValue = parseInt(parts[0].trim()) || min;
+            }
+            
+            if (parts.length > 1) {
+              const endMatch = parts[1].trim().match(feetInchesRegex);
+              if (endMatch) {
+                endValue = (parseInt(endMatch[1]) * 12) + parseInt(endMatch[2]);
+              } else {
+                endValue = parseInt(parts[1].trim()) || (startValue + 3);
+              }
+            } else {
+              endValue = startValue + 3;
+            }
+            
+            return [Math.max(startValue, min), Math.max(endValue, min)];
+          }
+          
+          if (field === 'weight') {
+            const parts = val.split('-');
+            const start = parseInt(parts[0].replace(/\s?lbs?/g, '').trim(), 10);
+            
+            if (parts.length > 1) {
+              const end = parseInt(parts[1].replace(/\s?lbs?/g, '').trim(), 10);
+              return [Math.max(start, min), Math.max(end, min)];
+            }
+            return [Math.max(start, min), Math.max(start + 15, min)];
+          }
+          
+          const [start, end] = val.split('-').map(v => parseFloat(v));
+          if (!isNaN(start) && !isNaN(end)) return [Math.max(start, min), Math.max(end, min)];
+          
+          const numVal = parseFloat(val);
+          if (!isNaN(numVal)) return [Math.max(numVal, min), Math.max(numVal + 2, min)];
+        }
+        return [min, min + (max - min) / 4];
+      };
+
+      const value_parsed = parseValue(value);
+      const isCupSizeArray = isCupSize && Array.isArray(value_parsed) && value_parsed.length === 2;
+      const currentValue = isCupSizeArray ? value_parsed[0] : (isCupSize ? 0 : value_parsed[0]);
+      const endValue = isCupSizeArray ? value_parsed[1] : (isCupSize ? Math.min(currentValue + 1, cupSizes.length - 1) : value_parsed[1]);
+
+      const formatDisplayValue = (val) => {
+        if (field === 'height') {
+          const feet = Math.floor(val / 12);
+          const inches = Math.round(val % 12);
+          return `${feet}'${inches}"`;
+        }
+        if (field === 'cup_size') {
+          const index = Math.min(Math.max(Math.round(val), 0), cupSizes.length - 1);
+          return cupSizes[index];
+        }
+        return field === 'weight' ? `${val} lbs`
+          : field === 'dress_size' ? val.toString()
+          : `${val}"`;
+      };
+
+      const handleCupSizeClick = (e) => {
+        const sliderRect = e.currentTarget.getBoundingClientRect();
+        const clickPosition = e.clientX - sliderRect.left;
+        const percentage = clickPosition / sliderRect.width;
+        const newIndex = Math.min(
+          Math.max(Math.round(percentage * (cupSizes.length - 1)), 0), 
+          cupSizes.length - 1
+        );
+        
+        const selectedCup = cupSizes[newIndex];
+        const nextIndex = Math.min(newIndex + 1, cupSizes.length - 1);
+        const nextCup = cupSizes[nextIndex];
+        handleMeasurementChange(sizeIndex, field, `${selectedCup}-${nextCup}`);
+      };
+
+      const handleChange = (newValue) => {
+        if (isCupSize) {
+          const index = Math.min(Math.max(Math.round(newValue), 0), cupSizes.length - 1);
+          const selectedCup = cupSizes[index];
+          const nextIndex = Math.min(index + 1, cupSizes.length - 1);
+          const nextCup = cupSizes[nextIndex];
+          handleMeasurementChange(sizeIndex, field, `${selectedCup}-${nextCup}`);
+        } else if (field === 'height') {
+          // Convert start value to feet and inches
+          const startFeet = Math.floor(newValue[0] / 12);
+          const startInches = Math.round(newValue[0] % 12);
+          
+          // Convert end value to feet and inches
+          const endFeet = Math.floor(newValue[1] / 12);
+          const endInches = Math.round(newValue[1] % 12);
+          
+          // Format as feet'inches" - feet'inches"
+          handleMeasurementChange(sizeIndex, field, `${startFeet}'${startInches}"-${endFeet}'${endInches}"`);
+        } else {
+          const start = Math.round(newValue[0]);
+          const end = Math.round(newValue[1]);
+          handleMeasurementChange(sizeIndex, field, `${start}-${end}`);
+        }
+      };
+
+      return (
+        <Box padding="2" background="bg-surface-secondary" borderRadius="2">
+          <LegacyStack vertical spacing="2">
+            <div style={{ opacity: isOptionalMeasurement && currentSizeRecommendation.optional_measurements?.[field] ? 0.5 : 1 }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                marginBottom: '8px' 
+              }}>
+                <div style={{ 
+                  background: 'linear-gradient(145deg, #ffffff, #f5f5f5)',
+                  padding: '8px 24px', 
+                  borderRadius: '20px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#2C3E50',
+                  border: '1px solid rgba(255,255,255,0.8)',
+                  minWidth: '140px',
+                  textAlign: 'center'
+                }}>
+                  {isCupSize ? `${formatDisplayValue(currentValue)} - ${formatDisplayValue(endValue)}` : `${formatDisplayValue(Math.max(currentValue, min))} - ${formatDisplayValue(Math.max(endValue, min))}`}
+                </div>
+              </div>
+
+              <Text variant="headingSm" as="h3" alignment="center">{label}</Text>
+
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                padding: '0 4px',
+                marginBottom: '6px'
+              }}>
+                <div style={{
+                  background: 'white',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                  border: '1px solid rgba(0,0,0,0.05)'
+                }}>
+                  <Text variant="bodySm">{formatDisplayValue(min)}</Text>
+                </div>
+                <div style={{
+                  background: 'white',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                  border: '1px solid rgba(0,0,0,0.05)'
+                }}>
+                  <Text variant="bodySm">{formatDisplayValue(max)}</Text>
+                </div>
+              </div>
+
+              <div style={{ 
+                background: 'white',
+                padding: '8px 6px',
+                borderRadius: '14px',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
+                border: '1px solid rgba(0,0,0,0.05)'
+              }}>
+                {isCupSize ? (
+                  <div style={{ width: '100%', position: 'relative' }}>
+                    <RangeSlider
+                      label={label}
+                      labelHidden
+                      value={[currentValue, Math.min(currentValue + 1, cupSizes.length - 1)]}
+                      min={0}
+                      max={cupSizes.length - 1}
+                      step={1}
+                      output={false}
+                      onChange={(values) => {
+                        console.log("Cup slider moved to:", values);
+                        if (!Array.isArray(values) || values.length !== 2) return;
+                        
+                        // Ensure the values are integers and within bounds
+                        const startIndex = Math.min(Math.max(Math.round(values[0]), 0), cupSizes.length - 1);
+                        const endIndex = Math.min(Math.max(Math.round(values[1]), 0), cupSizes.length - 1);
+                        
+                        // Ensure end is greater than or equal to start
+                        const validEndIndex = Math.max(endIndex, startIndex);
+                        
+                        const startCup = cupSizes[startIndex];
+                        const endCup = cupSizes[validEndIndex];
+                        
+                        // Update the cup size with the range - this is the key change
+                        const cupSizeRange = `${startCup}-${endCup}`;
+                        console.log("Setting cup size range:", cupSizeRange);
+                        handleMeasurementChange(sizeIndex, field, cupSizeRange);
+                      }}
+                      allowOverlap={false}
+                    />
+                  </div>
+                ) : (
+                  <RangeSlider
+                    label={label}
+                    labelHidden
+                    value={[Math.max(currentValue, min), Math.max(endValue, min)]}
+                    min={min}
+                    max={max}
+                    step={field === 'weight' ? 5 : 1}
+                    output={false}
+                    onChange={handleChange}
+                    allowOverlap={false}
+                  />
+                )}
+              </div>
+            </div>
+
+            {isOptionalMeasurement && (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginTop: '10px',
+                padding: '8px',
+                backgroundColor: '#f9fafb',
+                borderRadius: '4px'
+              }}>
+                <Text as="span" variant="bodyMd">Make {label} Optional</Text>
+                <div className="Polaris-Toggle">
+                  <input
+                    type="checkbox"
+                    id={toggleId}
+                    className="Polaris-Toggle__Input"
+                    checked={currentSizeRecommendation.optional_measurements?.[field] ?? false}
+                    onChange={(e) => {
+                      const updatedSizeRecommendation = {
+                        ...currentSizeRecommendation,
+                        optional_measurements: {
+                          ...currentSizeRecommendation.optional_measurements,
+                          [field]: e.target.checked
+                        }
+                      };
+                      setCurrentSizeRecommendation(updatedSizeRecommendation);
+                    }}
+                  />
+                  <label className="Polaris-Toggle__Label" htmlFor={toggleId}>
+                    <span className="Polaris-Toggle__Track">
+                      <span className="Polaris-Toggle__Icon"></span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+          </LegacyStack>
+        </Box>
+      );
+    };
+
+    const rows = currentSizeRecommendation.sizes.map((size, sizeIndex) => {
+      let measurementRows = [];
+      
+      if (selectedCategory === 'tops') {
+        measurementRows = [
+          [
+            <Box key={`height-${sizeIndex}`} width="50%" paddingInlineEnd="2">
+              {renderMeasurementSlider(sizeIndex, 'height', size.height, 'Height', 60, 84)}
+            </Box>,
+            <Box key={`weight-${sizeIndex}`} width="50%" paddingInlineStart="2">
+              {renderMeasurementSlider(sizeIndex, 'weight', size.weight, 'Weight (lbs)', 90, 300, 5)}
+            </Box>
+          ]
+        ];
+      } else if (selectedCategory === 'bottoms') {
+        measurementRows = [
+          [
+            <Box key={`waist-${sizeIndex}`} width="50%" paddingInlineEnd="2">
+              {renderMeasurementSlider(sizeIndex, 'waist', size.waist, 'Waist (in)', 24, 48)}
+            </Box>,
+            <Box key={`hip-${sizeIndex}`} width="50%" paddingInlineStart="2">
+              {renderMeasurementSlider(sizeIndex, 'hip', size.hip, 'Hip (in)', 32, 54)}
+            </Box>
+          ]
+        ];
+      } else if (selectedCategory === 'dresses') {
+        measurementRows = [
+          [
+            <Box key={`dress-size-${sizeIndex}`} width="100%">
+              {renderMeasurementSlider(sizeIndex, 'dress_size', size.dress_size, 'Dress Size', 0, 22, 2)}
+            </Box>
+          ]
+        ];
+      } else if (selectedCategory === 'Bikini Tops / Bras') {
+        measurementRows = [
+          [
+            <Box key={`band-size-${sizeIndex}`} width="50%" paddingInlineEnd="2">
+              {renderMeasurementSlider(sizeIndex, 'band_size', size.band_size, 'Band Size (in)', 28, 50)}
+            </Box>,
+            <Box key={`cup-size-${sizeIndex}`} width="50%" paddingInlineStart="2">
+              {renderMeasurementSlider(sizeIndex, 'cup_size', size.cup_size, 'Cup Size', 0, 8, 1)}
+            </Box>
+          ]
+        ];
+      }
+      
+      return {
+        size: size.size,
+        measurements: measurementRows
+      };
+    });
+
+    // Don't use DataTable, instead create a custom layout
+    return (
+      <div style={{ width: '100%' }}>
+        <TextField
+          label="Chart Name"
+          value={chartName}
+          onChange={setChartName}
+          autoComplete="off"
+        />
+        <Box padding="4" style={{ overflowX: 'visible', width: '100%' }}>
+          <div style={{ width: '100%', margin: '0 auto' }}>
+            <LegacyCard>
+              <Box paddingBlockStart="4" paddingInlineStart="0" paddingInlineEnd="0">
+                <Text variant="bodyMd" as="p" color="subdued">
+                  Drag the sliders to adjust measurements for each size:
+                </Text>
+                <Box paddingBlockStart="4">
+                  {/* Custom layout instead of DataTable */}
+                  {rows.map((sizeData, sizeIndex) => (
+                    <div key={`size-section-${sizeIndex}`} style={{
+                      border: '2px solid #5c6ac4', // Shopify blue border
+                      borderRadius: '8px',
+                      padding: '10px',
+                      marginBottom: '16px',
+                      boxShadow: '0px 1px 6px rgba(0, 0, 0, 0.05)'
+                    }}>
+                      {/* Size label as a header - more compact */}
+                      <Box padding="2" background="bg-surface" borderRadius="2" 
+                           style={{ marginBottom: '10px', textAlign: 'center', borderBottom: '1px solid #e1e3e5' }}>
+                        <Text variant="headingMd" as="h3" fontWeight="bold">
+                          {sizeData.size}
+                        </Text>
+                      </Box>
+                      
+                      {/* Measurement sliders - reduced spacing */}
+                      <div style={{ marginBottom: '4px', width: '100%' }}>
+                        {sizeData.measurements.map((measurementRow, rowIndex) => (
+                          <div key={`measurement-row-${sizeIndex}-${rowIndex}`} 
+                               style={{ width: '100%', marginBottom: '10px', display: 'flex' }}>
+                            {measurementRow}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </Box>
+              </Box>
+            </LegacyCard>
+          </div>
+        </Box>
+        
+        {/* Product selection section */}
+        <Box padding="4">
+          <LegacyCard>
+            <LegacyCard.Section>
+              <Box paddingBlockStart="2" paddingBlockEnd="2">
+                <LegacyStack distribution="equalSpacing" alignment="center">
+                  <Text variant="headingMd" as="h3">Selected Products</Text>
+                  <Button onClick={() => setIsResourcePickerOpen(true)}>
+                    {selectedProducts.length > 0 ? 'Edit Products' : 'Select Products'}
+                  </Button>
+                </LegacyStack>
+              </Box>
+            </LegacyCard.Section>
+            <LegacyCard.Section>
+              {renderSelectedProducts()}
+            </LegacyCard.Section>
+          </LegacyCard>
+        </Box>
+      </div>
+    );
+  };
+
+  const renderSelectedProducts = () => {
+    if (!selectedProducts || selectedProducts.length === 0) {
+      return (
+        <Banner status="info">
+          <p>No products selected. Please select products to associate with this size recommendation.</p>
+        </Banner>
+      );
+    }
+
+    console.log('Rendering selected products:', selectedProducts);
+    
+    // Default image that we know works
+    const defaultImage = 'https://cdn.shopify.com/s/files/1/0685/6065/0425/files/sizebuddy_app_pic.png?v=1740975922';
+    
+    return (
+      <LegacyStack>
+        <div style={{ width: '100%' }}>
+          <LegacyStack vertical>
+            {selectedProducts.map((item, index) => {
+              console.log(`Product ${index}:`, item.title, 'Image URL:', item.image);
+              
+              return (
+                <LegacyStack alignment="center" key={index} distribution="fillEvenly">
+                  <div style={{ 
+                    width: '50px', 
+                    height: '50px', 
+                    overflow: 'hidden', 
+                    marginRight: '10px', 
+                    position: 'relative', 
+                    border: '1px solid rgba(0,0,0,0.1)', 
+                    borderRadius: '4px',
+                    background: '#f4f6f8'
+                  }}>
+                    <img
+                      src={item.image || defaultImage}
+                      alt={item.title}
+                      style={{ 
+                        width: '100%', 
+                        height: '100%', 
+                        objectFit: 'cover'
+                      }}
+                      onError={(e) => {
+                        console.log(`Image error for ${item.title}, using default`);
+                        e.target.src = defaultImage;
+                      }}
+                    />
+                  </div>
+                  <Text variant="bodyMd" fontWeight="bold">
+                    {item.title}
+                  </Text>
+                </LegacyStack>
+              );
+            })}
+          </LegacyStack>
+        </div>
+      </LegacyStack>
+    );
+  };
+
+  const modalContent = () => {
+    console.log('Rendering modal content, current state:', {
+      step,
+      selectedCategory,
+      selectedFitType,
+      chartName,
+      isModalOpen
+    });
+    return (
+      <div style={{ 
+        width: '100%', 
+        maxWidth: '100%', 
+        margin: '0 auto', 
+        overflowX: 'visible',
+        boxSizing: 'border-box',
+        padding: '0'
+      }}>
+        {step === 'category' && (
+          <>
+            {console.log('Rendering category selection grid')}
+            {renderCategorySelection()}
+          </>
+        )}
+        {step === 'details' && (
+          <>
+            {console.log('Rendering fit type selection')}
+            {renderFitTypeSelection()}
+          </>
+        )}
+        {step === 'chart' && (
+          <>
+            {console.log('Rendering size recommendation chart')}
+            {renderSizeRecommendation()}
+          </>
+        )}
+        {step === 'products' && (
+          <>
+            {console.log('Rendering selected products')}
+            {renderSelectedProducts()}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <Frame>
+        <LegacyCard>
+          <Box padding="4">
+            <SkeletonBodyText lines={3} />
+          </Box>
+        </LegacyCard>
+      </Frame>
+    );
+  }
+
+  return (
+    <>
+      <Modal
+        open={isModalOpen}
+        onClose={handleModalClose}
+        title="Create Size Recommendation"
+        size="large"
+        footer={
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            width: '100%', 
+            padding: '16px',
+            borderTop: '1px solid var(--p-divider)'
+          }}>
+            <div>
+              {step !== 'category' && (
+                <Button
+                  onClick={() => {
+                    console.log('Back button clicked, current step:', step);
+                    if (step === 'details') setStep('category');
+                    else if (step === 'chart') setStep('details');
+                  }}
+                >
+                  Back
+                </Button>
+              )}
+            </div>
+            <div>
+              {step === 'chart' && (
+                <Button
+                  primary
+                  onClick={() => {
+                    console.log('Save button clicked, validation state:', {
+                      chartName,
+                      selectedCategory,
+                      selectedFitType,
+                      hasCurrentSizeRecommendation: !!currentSizeRecommendation,
+                      selectedProductsCount: selectedProducts.length,
+                      disabled: !chartName || selectedProducts.length === 0
+                    });
+                    handleSave();
+                  }}
+                  disabled={!chartName || selectedProducts.length === 0}
+                >
+                  {editingRecommendationId ? 'Update' : 'Save'} Size Recommendation
+                </Button>
+              )}
+            </div>
+          </div>
+        }
+      >
+        <Modal.Section>
+          <div style={{ width: '100%', maxWidth: '900px', margin: '0 auto' }}>
+            {console.log('Modal is open:', isModalOpen)}
+            {modalContent()}
+          </div>
+        </Modal.Section>
+      </Modal>
+
+      <ResourcePicker
+        resourceType="Product"
+        open={isResourcePickerOpen}
+        onCancel={() => setIsResourcePickerOpen(false)}
+        onSelection={handleProductSelect}
+        showVariants={false}
+        initialSelectionIds={selectedProducts.map(p => ({ id: `gid://shopify/Product/${p.id}` }))}
+      />
+
+      {showToast && (
+        <Toast
+          content={toastProps.content}
+          error={toastProps.error}
+          onDismiss={() => setShowToast(false)}
+        />
+      )}
+
+      <Layout>
+        <Layout.Section>
+          <LegacyCard>
+            <Box padding="4">
+              {sizeRecommendations.length === 0 ? (
+                <EmptyState
+                  heading="Create your first size recommendation"
+                  action={{
+                    content: 'Create Size Recommendation',
+                    onAction: () => setIsModalOpen(true)
+                  }}
+                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                >
+                  <p>Start by creating a size recommendation for your products.</p>
+                </EmptyState>
+              ) : (
+                <>
+                  <Box paddingBlockEnd="4">
+                    <LegacyStack distribution="equalSpacing" alignment="center">
+                      <Text variant="headingMd" as="h3">Your Size Recommendations</Text>
+                      <Button primary onClick={() => setIsModalOpen(true)}>
+                        Create Size Recommendation
+                      </Button>
+                    </LegacyStack>
+                  </Box>
+                  <ResourceList
+                    items={sizeRecommendations}
+                    renderItem={(item) => (
+                      <ResourceItem id={item.id}>
+                        <LegacyStack distribution="equalSpacing" alignment="center">
+                          <LegacyStack vertical>
+                            <Text variant="bodyMd" as="h3" fontWeight="bold">
+                              {item.name}
+                            </Text>
+                            <LegacyStack>
+                              <Badge status="info">{item.category}</Badge>
+                              <Badge status="success">{item.fit_type} Fit</Badge>
+                            </LegacyStack>
+                          </LegacyStack>
+                          <ButtonGroup>
+                            <Button onClick={() => handleEdit(item)}>Edit</Button>
+                            <Button destructive onClick={() => handleDelete(item.id)}>Delete</Button>
+                          </ButtonGroup>
+                        </LegacyStack>
+                      </ResourceItem>
+                    )}
+                  />
+                </>
+              )}
+            </Box>
+          </LegacyCard>
+        </Layout.Section>
+
+        <Layout.Section secondary>
+          <LegacyCard>
+            <LegacyCard.Section>
+              <Text variant="headingMd" as="h3">
+                About Size Recommendations
+              </Text>
+              <Box paddingBlockStart="3">
+                <Text as="p" variant="bodyMd">
+                  Size recommendations help your customers find their perfect fit. Each recommendation is automatically generated based on the category
+                  and fit type you select.
+                </Text>
+              </Box>
+            </LegacyCard.Section>
+            <LegacyCard.Section>
+              <Text variant="headingMd" as="h3">
+                How it works
+              </Text>
+              <Box paddingBlockStart="3">
+                <LegacyStack vertical spacing="3">
+                  <Text as="p" variant="bodyMd">
+                    1. Choose a category (Tops, Bottoms, Dresses, or Bikini Tops / Bras)
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    2. Name your size recommendation
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    3. Select the fit type (Slim, Regular, or Loose)
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    4. Review and customize the measurements
+                  </Text>
+                </LegacyStack>
+              </Box>
+            </LegacyCard.Section>
+          </LegacyCard>
+        </Layout.Section>
+      </Layout>
+
+      {/* Add CSS to ensure modal content takes full width */}
+      <style>
+        {`
+        .Polaris-Modal-Dialog__Modal {
+          display: flex !important;
+          flex-direction: column !important;
+          max-width: 95vw !important;
+          width: 1000px !important;
+        }
+        .Polaris-Modal__BodyWrapper {
+          flex: 1 1 auto !important;
+          width: 100% !important;
+          padding: 0 !important;
+        }
+        .Polaris-Modal__Body {
+          width: 100% !important;
+          padding: 0 !important;
+        }
+        .Polaris-Modal-Section {
+          width: 100% !important;
+          padding: 0 !important;
+        }
+        .Polaris-Box {
+          max-width: 100%;
+          width: 100%;
+        }
+        .Polaris-LegacyCard {
+          width: 100%;
+          margin: 0;
+          box-shadow: none;
+          padding: 0;
+        }
+        .Polaris-RangeSlider {
+          width: 100%;
+        }
+        .Polaris-RangeSlider-SingleThumb {
+          width: 100%;
+        }
+        .Polaris-RangeSlider__Backdrop {
+          width: 100% !important;
+        }
+        .Polaris-TextField {
+          max-width: 100%;
+          width: 100%;
+        }
+        .Polaris-LegacyStack {
+          width: 100%;
+        }
+        .Polaris-Modal-CloseButton {
+          margin-right: 16px;
+        }
+        /* Position Save button to the far right and Back button to the left */
+        .Polaris-Modal-Footer {
+          display: flex !important;
+          flex-direction: row-reverse !important; /* This reverses the order of elements */
+          padding: 16px !important;
+          width: 100% !important;
+        }
+        /* Target both primary and secondary action buttons directly */
+        .Polaris-Modal-Footer .Polaris-Button--primary {
+          margin-left: 0 !important;
+          margin-right: 16px !important;
+          order: 1 !important;
+          float: right !important;
+        }
+        .Polaris-Modal-Footer .Polaris-Button:not(.Polaris-Button--primary) {
+          margin-right: auto !important;
+          order: 2 !important;
+          margin-left: 16px !important;
+          float: left !important;
+        }
+        /* Clear all other positioning that might interfere */
+        .Polaris-Modal-Footer div, 
+        .Polaris-Modal-Footer section {
+          display: contents !important;
+        }
+        /* Force the direct parent of the primary button to the right */
+        .Polaris-Modal-Footer .Polaris-Modal-Footer__PrimaryButton,
+        .Polaris-Modal-Footer .Polaris-Button-group--primary {
+          margin-left: auto !important;
+          display: flex !important;
+          justify-content: flex-end !important;
+        }
+        /* Force the direct parent of the secondary button to the left */
+        .Polaris-Modal-Footer .Polaris-Modal-Footer__SecondaryActions {
+          margin-right: auto !important;
+          display: flex !important;
+          justify-content: flex-start !important;
+        }
+        /* Add CSS to optimize slider heights */
+        .Polaris-RangeSlider-SingleThumb, .Polaris-RangeSlider-DualThumb {
+          height: 24px !important;
+        }
+        .Polaris-RangeSlider__Output {
+          margin-top: 0px !important;
+        }
+        .Polaris-RangeSlider__Input {
+          height: 24px !important;
+        }
+        `}
+      </style>
+    </>
+  );
+} 

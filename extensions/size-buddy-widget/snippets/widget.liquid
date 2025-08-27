@@ -1,0 +1,107 @@
+<div class="size-buddy-widget">
+  <h3>Find Your Perfect Size</h3>
+  <div class="size-buddy-content">
+    <p>Select your measurements to find the perfect fit for this product.</p>
+    <div class="size-recommendation-form">
+      <div class="form-group">
+        <label for="height">Height (cm)</label>
+        <input type="number" id="height" min="100" max="220" placeholder="Enter your height">
+      </div>
+      <div class="form-group">
+        <label for="weight">Weight (kg)</label>
+        <input type="number" id="weight" min="30" max="150" placeholder="Enter your weight">
+      </div>
+      <button class="get-recommendation-btn">Get Size Recommendation</button>
+    </div>
+    <div class="size-recommendation-result" style="display: none;">
+      <p>Based on your measurements, we recommend size: <strong class="recommended-size">M</strong></p>
+    </div>
+  </div>
+
+  <style>
+    .size-buddy-widget {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      background-color: #f9f9f9;
+    }
+    
+    .size-buddy-widget h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+      font-size: 18px;
+      color: #333;
+    }
+    
+    .form-group {
+      margin-bottom: 10px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .get-recommendation-btn {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    
+    .get-recommendation-btn:hover {
+      background-color: #45a049;
+    }
+    
+    .size-recommendation-result {
+      margin-top: 15px;
+      padding: 10px;
+      background-color: #e8f5e9;
+      border-radius: 4px;
+    }
+  </style>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.querySelector('.size-recommendation-form');
+      const resultDiv = document.querySelector('.size-recommendation-result');
+      const recommendedSizeSpan = document.querySelector('.recommended-size');
+      const button = document.querySelector('.get-recommendation-btn');
+      
+      button.addEventListener('click', function() {
+        const height = parseInt(document.getElementById('height').value) || 0;
+        const weight = parseInt(document.getElementById('weight').value) || 0;
+        
+        if (height < 100 || weight < 30) {
+          alert('Please enter valid height and weight values');
+          return;
+        }
+        
+        // Simple size recommendation algorithm
+        let recommendedSize = 'M';
+        
+        if (height < 165 && weight < 60) {
+          recommendedSize = 'S';
+        } else if (height > 180 || weight > 80) {
+          recommendedSize = 'L';
+        }
+        
+        // Display the result
+        recommendedSizeSpan.textContent = recommendedSize;
+        resultDiv.style.display = 'block';
+      });
+    });
+  </script>
+</div> 

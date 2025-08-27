@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Main pants body -->
+  <path d="M30 15 L70 15 L75 85 L55 85 L50 50 L45 85 L25 85 L30 15" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="3"
+        stroke-linejoin="round"/>
+  
+  <!-- Waistband -->
+  <path d="M25 15 L75 15" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="4"
+        stroke-linecap="round"/>
+  
+  <!-- Left pocket -->
+  <path d="M35 20 C35 20 40 20 45 20" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="2"/>
+  
+  <!-- Right pocket -->
+  <path d="M55 20 C55 20 60 20 65 20" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="2"/>
+  
+  <!-- Seams -->
+  <path d="M50 50 L50 15" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="2"
+        stroke-dasharray="2,3"/>
+  
+  <!-- Cuffs -->
+  <path d="M25 85 L35 85 M65 85 L75 85" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="3"/>
+</svg> 

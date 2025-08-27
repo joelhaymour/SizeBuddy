@@ -1,0 +1,8 @@
+# Name of your extension
+name = "Size Buddy"
+
+# Use the extension-specific target
+type = "theme"
+
+# This extension uses app blocks
+extension_points = ["app_block"] 

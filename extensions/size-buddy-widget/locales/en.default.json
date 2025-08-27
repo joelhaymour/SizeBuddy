@@ -1,0 +1,18 @@
+{
+  "size_buddy": {
+    "widget": {
+      "title": "Find Your Perfect Size",
+      "loading": "Loading size recommendations...",
+      "size_recommendation": "Recommended Size: {size}",
+      "enter_measurements": "Enter Your Measurements",
+      "height": "Height",
+      "weight": "Weight",
+      "waist": "Waist",
+      "chest": "Chest",
+      "hips": "Hips",
+      "get_recommendation": "Get Size Recommendation",
+      "size_chart": "View Size Chart",
+      "error": "Unable to load size recommendations"
+    }
+  }
+} 

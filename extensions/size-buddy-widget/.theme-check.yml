@@ -1,0 +1,3 @@
+AppBlockMissingSchema:
+  enabled: false
+  severity: warning 

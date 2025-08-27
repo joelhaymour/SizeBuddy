@@ -1,0 +1,59 @@
+{
+  "name": "Size Buddy Widget",
+  "version": "1.0.0",
+  "description": "A widget that helps customers find their perfect size",
+  "permissions": [
+    "read_products",
+    "read_themes"
+  ],
+  "targets": {
+    "section": {
+      "templates": ["product"]
+    }
+  },
+  "settings": {
+    "show_widget": {
+      "type": "boolean",
+      "default": true,
+      "label": "Show Size Buddy Widget"
+    },
+    "widget_position": {
+      "type": "select",
+      "default": "below_add_to_cart",
+      "label": "Widget Position",
+      "options": [
+        {
+          "value": "below_add_to_cart",
+          "label": "Below Add to Cart"
+        },
+        {
+          "value": "above_add_to_cart",
+          "label": "Above Add to Cart"
+        },
+        {
+          "value": "product_description",
+          "label": "In Product Description"
+        }
+      ]
+    },
+    "widget_style": {
+      "type": "select",
+      "default": "standard",
+      "label": "Widget Style",
+      "options": [
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "minimal",
+          "label": "Minimal"
+        },
+        {
+          "value": "bold",
+          "label": "Bold"
+        }
+      ]
+    }
+  }
+} 

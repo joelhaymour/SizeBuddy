@@ -1,0 +1,27 @@
+# Deployment Checklist
+
+- Domain
+  - Set production HTTPS domain and TLS
+  - Update `.env` HOST to `https://your-domain`
+  - Update `shopify.app.toml` app URLs
+- Shopify Partners
+  - App URL and Allowed redirection URLs use your domain
+  - App proxy subpath points to `/app-proxy`
+  - Webhook URL: `/api/webhooks`
+- Billing
+  - Plans: Free (2 charts), Pro ($12.99), Premium ($24.99)
+  - Test a Pro subscription end-to-end
+- Sessions
+  - Set `REDIS_URL` in prod (Redis session storage)
+- Database
+  - Use Postgres in prod (`DATABASE_URL`), run migrations
+  - Backups and retention policy configured
+- Security
+  - CSP tightened, HSTS enabled
+  - Minimum Shopify scopes only
+- Observability
+  - Set `SENTRY_DSN`
+  - Uptime checks hitting `/health`
+- Frontend
+  - Set `VITE_SENTRY_DSN` (optional)
+  - Build and deploy assets

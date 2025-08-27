@@ -1,0 +1,130 @@
+{% schema %}
+{
+  "name": "Size Buddy",
+  "target": "section",
+  "stylesheet": "size-buddy.css",
+  "javascript": "size-buddy-v4.js",
+  "templates": ["product"],
+  "settings": [
+    {
+      "type": "select",
+      "id": "position",
+      "label": "Position",
+      "options": [
+        {
+          "value": "inline",
+          "label": "Inline with size selector"
+        },
+        {
+          "value": "below",
+          "label": "Below size selector"
+        },
+        {
+          "value": "above",
+          "label": "Above size selector"
+        }
+      ],
+      "default": "inline"
+    },
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "Button Text",
+      "default": "Size Buddy"
+    },
+    {
+      "type": "text",
+      "id": "modal_title",
+      "label": "Modal Title",
+      "default": "Size Recommendation"
+    },
+    {
+      "type": "text",
+      "id": "modal_description",
+      "label": "Modal Description",
+      "default": "Enter your measurements to get your perfect size"
+    }
+  ]
+}
+{% endschema %}
+
+<size-buddy-block 
+  class="size-buddy-block" 
+  data-position="{{ block.settings.position }}"
+  data-shop-domain="{{ shop.permanent_domain }}"
+  data-product-id="{{ product.id }}"
+  data-product-title="{{ product.title }}"
+  data-product-handle="{{ product.handle }}"
+  data-button-text="{{ block.settings.button_text }}"
+  data-modal-title="{{ block.settings.modal_title }}"
+  data-modal-description="{{ block.settings.modal_description }}"
+>
+  <button type="button" class="size-buddy-trigger">
+    {{ block.settings.button_text | default: "Size Buddy" }}
+  </button>
+
+  <div class="size-buddy-modal">
+    <div class="size-buddy-modal-content">
+      <div class="size-buddy-modal-header">
+        <h2>{{ block.settings.modal_title | default: "Size Recommendation" }}</h2>
+        <button type="button" class="size-buddy-close">&times;</button>
+      </div>
+      
+      <div class="size-buddy-modal-body">
+        <p class="size-buddy-description">
+          {{ block.settings.modal_description | default: "Enter your measurements to get your perfect size" }}
+        </p>
+        
+        <form class="size-buddy-measurements-form">
+          <!-- These fields will be shown/hidden dynamically based on product category -->
+          <div class="size-buddy-input-group" data-field="height">
+            <label for="height">Height (cm):</label>
+            <input type="number" id="height" name="height" required min="100" max="250" step="0.1">
+          </div>
+          
+          <div class="size-buddy-input-group" data-field="weight">
+            <label for="weight">Weight (kg):</label>
+            <input type="number" id="weight" name="weight" required min="30" max="200" step="0.1">
+          </div>
+          
+          <div class="size-buddy-input-group" data-field="chest" style="display: none;">
+            <label for="chest">Chest (cm):</label>
+            <input type="number" id="chest" name="chest" min="60" max="150" step="0.1">
+          </div>
+          
+          <div class="size-buddy-input-group" data-field="waist" style="display: none;">
+            <label for="waist">Waist (cm):</label>
+            <input type="number" id="waist" name="waist" min="50" max="150" step="0.1">
+          </div>
+          
+          <div class="size-buddy-input-group" data-field="hips" style="display: none;">
+            <label for="hips">Hips (cm):</label>
+            <input type="number" id="hips" name="hips" min="70" max="150" step="0.1">
+          </div>
+          
+          <div class="size-buddy-input-group" data-field="bust" style="display: none;">
+            <label for="bust">Bust (cm):</label>
+            <input type="number" id="bust" name="bust" min="70" max="150" step="0.1">
+          </div>
+          
+          <button type="submit" class="size-buddy-calculate">Calculate Size</button>
+        </form>
+        
+        <div class="size-buddy-loading" style="display: none;">
+          <div class="size-buddy-spinner"></div>
+          <p>Calculating your perfect size...</p>
+        </div>
+        
+        <div class="size-buddy-result" style="display: none;">
+          <p class="size-buddy-recommendation"></p>
+          <button type="button" class="size-buddy-add-to-cart">Add to Cart</button>
+        </div>
+        
+        <div class="size-buddy-error" style="display: none;">
+          <p class="size-buddy-error-message"></p>
+          <button type="button" class="size-buddy-try-again">Try Again</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</size-buddy-block> 

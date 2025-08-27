@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Left cup -->
+  <path d="M25 40 C25 30 35 30 40 40 C45 50 35 55 25 45 C20 40 25 40 25 40" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="2"
+        stroke-linejoin="round"/>
+  
+  <!-- Right cup -->
+  <path d="M75 40 C75 30 65 30 60 40 C55 50 65 55 75 45 C80 40 75 40 75 40" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="2"
+        stroke-linejoin="round"/>
+  
+  <!-- Center band -->
+  <path d="M40 42 L60 42" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="2"/>
+  
+  <!-- Straps -->
+  <path d="M30 35 L25 25 M70 35 L75 25" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="2"/>
+  
+  <!-- Back band -->
+  <path d="M25 45 L20 45 M75 45 L80 45" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="2"/>
+</svg> 

@@ -1,0 +1,16 @@
+name = "size-buddy-widget"
+type = "theme"
+handle = "size-buddy-widget"
+
+[capabilities]
+network_access = true
+block_progress = true
+api_access = true
+
+[extension_points]
+section = { renders = ["app"] }
+
+[settings]
+fields = [
+  { key = "show_widget", type = "boolean", name = "Show Size Buddy Widget", description = "Enable or disable the Size Buddy widget", default = true }
+] 
