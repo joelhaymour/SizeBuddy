@@ -27,6 +27,10 @@ extensions/*/build
 # Node library SQLite database
 web/database.sqlite
 
+# Ignore any SQLite/DB files anywhere in the repo
+**/*.sqlite
+**/*.db
+
 # Ignore shopify files created during app dev
 .shopify/*
 .shopify.lock
