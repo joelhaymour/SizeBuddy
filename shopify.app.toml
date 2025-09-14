@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "2f04ec2176fa381f9554da22c41aebb0"
-application_url = "https://808c4044a8b2.ngrok.app"
+application_url = "https://sizebuddy.onrender.com"
 embedded = true
 name = "size-buddy"
 handle = "size-buddy-v6-testing"
@@ -19,15 +19,14 @@ scopes = "write_products read_products write_customers read_customers read_theme
 
 [auth]
 redirect_urls = [
-      "https://808c4044a8b2.ngrok.app/auth/callback",
-          "https://808c4044a8b2.ngrok.app/auth/shopify/callback",
-          "https://808c4044a8b2.ngrok.app/api/auth/callback"
+      "https://sizebuddy.onrender.com/api/auth/callback",
+      "https://sizebuddy.onrender.com/api/auth/exit-iframe"
 ]
 
 [pos]
 embedded = false
 
 [app_proxy]
-  url = "https://808c4044a8b2.ngrok.app"
+  url = "https://sizebuddy.onrender.com"
 prefix = "apps"
 subpath = "size-buddy"
