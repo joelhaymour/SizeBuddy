@@ -784,19 +784,7 @@ if (process.env.NODE_ENV === "development") {
   // Production mode: serve static files
   app.use(shopify.cspHeaders());
   app.use(serveStatic(STATIC_PATH, { index: false }));
-
-  app.get("/*", shopify.ensureInstalledOnShop(), async (_req, res) => {
-    const indexFilePath = join(STATIC_PATH, "index.html");
-    try {
-      const indexContent = readFileSync(indexFilePath, 'utf8')
-        .replace(/%SHOPIFY_API_KEY%/g, process.env.SHOPIFY_API_KEY || "");
-      res.status(200).set("Content-Type", "text/html").send(indexContent);
-    } catch (error) {
-      console.error('Error serving index.html:', error);
-      res.status(500).send('Error loading application');
-    }
-  });
-
+  
   // API routes require authentication EXCEPT size-recommendations
   app.use("/api/*", (req, res, next) => {
     // Skip validation for size-recommendations endpoints
@@ -811,6 +799,19 @@ if (process.env.NODE_ENV === "development") {
     
     // For all other API routes, use standard auth
     shopify.validateAuthenticatedSession()(req, res, next);
+  });
+
+  // Catch-all for non-API GETs only (serve frontend)
+  app.get(/^\/(?!api\/).*$/, shopify.ensureInstalledOnShop(), async (_req, res) => {
+    const indexFilePath = join(STATIC_PATH, "index.html");
+    try {
+      const indexContent = readFileSync(indexFilePath, 'utf8')
+        .replace(/%SHOPIFY_API_KEY%/g, process.env.SHOPIFY_API_KEY || "");
+      res.status(200).set("Content-Type", "text/html").send(indexContent);
+    } catch (error) {
+      console.error('Error serving index.html:', error);
+      res.status(500).send('Error loading application');
+    }
   });
 }
 
