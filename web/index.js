@@ -666,16 +666,17 @@ app.use((req, res, next) => {
   const isDev = process.env.NODE_ENV === 'development';
   const host = process.env.HOST || '';
   const self = "'self'";
-  const unsafeInline = isDev ? " 'unsafe-inline'" : '';
+  // Polaris and App Bridge require some inline styles; allow in production
+  const unsafeInline = " 'unsafe-inline'";
   const unsafeEval = isDev ? " 'unsafe-eval'" : '';
-  const sources = [self, host, `https://admin.shopify.com`, `https://*.myshopify.com`].join(' ');
+  const sources = [self, host, `https://admin.shopify.com`, `https://*.myshopify.com`, `https://cdn.shopify.com`].join(' ');
 
   const csp = [
     `default-src ${sources} data:`,
     `img-src ${sources} data: blob:`,
     `font-src ${sources} data:`,
     `style-src ${sources}${unsafeInline}`,
-    `script-src ${sources}${unsafeInline}${unsafeEval} blob:`,
+    `script-src ${sources}${unsafeEval} blob:`,
     `connect-src ${sources} wss://*`,
     `frame-ancestors https://admin.shopify.com https://*.myshopify.com`,
   ].join('; ');
@@ -701,6 +702,14 @@ app.use(express.static(join(process.cwd(), 'frontend/dist')));
 app.get("/api/auth", shopify.auth.begin());
 app.get("/api/auth/callback", shopify.auth.callback(), shopify.redirectToShopifyOrAppRoot());
 app.post(shopify.config.webhooks.path, shopify.processWebhooks({ webhookHandlers: CustomWebhookHandlers }));
+
+// Add a permissive preflight handler for our API routes (Shopify OAuth redirects trigger OPTIONS)
+app.options('*', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', process.env.HOST || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Shopify-Access-Token');
+  res.status(204).end();
+});
 
 // Debug middleware
 app.use((req, res, next) => {
