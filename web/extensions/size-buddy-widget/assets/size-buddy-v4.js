@@ -305,7 +305,7 @@
       try {
         // Add timestamp to prevent caching
         const timestamp = Date.now();
-        const backendUrl = 'https://808c4044a8b2.ngrok.app';
+        const backendUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com');
         const apiUrl = backendUrl + '/direct-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
         
         console.log('Fetching size data from:', apiUrl);
@@ -329,7 +329,7 @@
         if (!window.sizeBuddyViewLogged) window.sizeBuddyViewLogged = {};
         if (!window.sizeBuddyViewLogged[productId]) {
           try {
-            const backendUrl = 'https://808c4044a8b2.ngrok.app';
+            const backendUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com');
             await fetch(`${backendUrl}/api/log-widget-view`, {
               method: 'POST',
               headers: {
@@ -1492,7 +1492,7 @@
       console.log('logSizeRecommendation called with:', { chartId, recommendedSize, measurements, shopDomain, productId });
       // Use direct backend URL first
       const backendUrls = [
-        'https://808c4044a8b2.ngrok.app'
+        (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com')
       ];
       let logSuccess = false;
       for (const backendUrl of backendUrls) {

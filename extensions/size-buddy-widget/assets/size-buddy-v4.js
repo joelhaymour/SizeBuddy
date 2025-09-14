@@ -105,11 +105,11 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!fetchSuccess) {
         try {
           console.log('Proxy fetch failed, attempting direct backend URL...');
-          // Try each possible ngrok URL
+          // Try host fallbacks
           const possibleUrls = [
-            'https://1a2d3c5a1d96.ngrok.app',
+            (window.SIZE_BUDDY_HOST || ''),
             'http://localhost:3000'
-          ];
+          ].filter(Boolean);
           
           for (const backendUrl of possibleUrls) {
             try {

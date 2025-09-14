@@ -57,7 +57,7 @@ app.use(cors({
       /\.ngrok-free\.app$/,
       /\.ngrok\.app$/,
       /\.ngrok\.io$/,
-      'https://808c4044a8b2.ngrok.app',  // Add the specific ngrok URL
+      process.env.HOST,
       /\.shopify\.com$/,
       'null',  // Allow requests with no origin
       `http://localhost:${FRONTEND_PORT}`,
