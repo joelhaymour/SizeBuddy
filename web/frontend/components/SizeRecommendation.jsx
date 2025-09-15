@@ -149,6 +149,7 @@ export function SizeRecommendation({ shop, host }) {
   const handleModalOpen = () => {
     console.log('Opening modal');
     setIsModalOpen(true);
+    setEditingRecommendationId(null);
     setStep('category');
     setSelectedCategory('');
     setSelectedFitType('');
@@ -161,6 +162,7 @@ export function SizeRecommendation({ shop, host }) {
   const handleModalClose = () => {
     console.log('Closing modal');
     setIsModalOpen(false);
+    setEditingRecommendationId(null);
     setStep('category');
     setSelectedCategory('');
     setSelectedFitType('');

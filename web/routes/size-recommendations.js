@@ -31,6 +31,7 @@ router.get('/api/size-recommendations', async (req, res) => {
   console.log(`Fetching size recommendations for shop: ${shop}`);
 
   try {
+    res.set('Cache-Control', 'no-store');
     const recommendations = await req.app.locals.db.all(
       `SELECT * FROM size_charts WHERE shop_domain = ? ORDER BY created_at DESC`,
       [shop]
@@ -77,6 +78,7 @@ router.get('/api/size-recommendations/:id', async (req, res) => {
   }
 
   try {
+    res.set('Cache-Control', 'no-store');
     const recommendation = await req.app.locals.db.get(
       `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ?`,
       [recommendationId, shop]
@@ -185,6 +187,16 @@ router.post('/api/size-recommendations', async (req, res) => {
     );
 
     const recommendationId = result.lastID;
+    if (!recommendationId) {
+      const row = await req.app.locals.db.get(
+        `SELECT id FROM size_charts WHERE name = ? AND shop_domain = ? ORDER BY id DESC LIMIT 1`,
+        [chart_name, resolvedShop]
+      );
+      if (row?.id) {
+        console.log('Recovered recommendationId from DB lookup:', row.id);
+        recommendationId = row.id;
+      }
+    }
 
     // Insert associated products if any
     if (products && products.length > 0) {
