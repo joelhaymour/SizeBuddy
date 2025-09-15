@@ -208,7 +208,7 @@ router.post('/api/size-recommendations', async (req, res) => {
           product.title,
           product.handle,
           product.image,
-          shop
+          resolvedShop
         );
       }
 
@@ -226,7 +226,7 @@ router.post('/api/size-recommendations', async (req, res) => {
 });
 
 // Update a size recommendation
-router.put('/api/size-recommendations/:id', validateAuthenticatedSession, requireActiveSubscription, async (req, res) => {
+router.put('/api/size-recommendations/:id', async (req, res) => {
   const recommendationId = req.params.id;
   const {
     shop,
@@ -239,7 +239,8 @@ router.put('/api/size-recommendations/:id', validateAuthenticatedSession, requir
   } = req.body;
 
   const sessionShop = res.locals?.shopify?.session?.shop;
-  const resolvedShop = shop || sessionShop;
+  const tokenShop = extractShopFromBearer(req);
+  const resolvedShop = shop || sessionShop || tokenShop;
   if (!resolvedShop || !chart_name || !chart_data || !category || !fit_type) {
     return res.status(400).send({ error: "Missing required fields" });
   }
@@ -301,7 +302,7 @@ router.put('/api/size-recommendations/:id', validateAuthenticatedSession, requir
           product.title,
           product.handle,
           product.image,
-          shop
+          resolvedShop
         );
       }
 
