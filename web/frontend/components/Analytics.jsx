@@ -67,7 +67,10 @@ export function Analytics({ shop, host }) {
 
   const handleUpgrade = async (plan) => {
     try {
-      window.location.href = `/api/billing/redirect?plan=${encodeURIComponent(plan)}`;
+      const url = new URL(window.location.href);
+      const hostParam = url.searchParams.get('host') || host;
+      const target = `/api/billing/redirect?plan=${encodeURIComponent(plan)}${hostParam ? `&host=${encodeURIComponent(hostParam)}` : ''}`;
+      window.location.href = target;
     } catch (e) {}
   };
 

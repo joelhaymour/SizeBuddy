@@ -10,8 +10,23 @@ import {
 
 // Get URL params
 const urlParams = new URLSearchParams(window.location.search);
-const shop = urlParams.get('shop');
-const host = urlParams.get('host');
+let shop = urlParams.get('shop');
+let host = urlParams.get('host');
+// If embedded params are missing, attempt to restore from sessionStorage
+if (!shop || !host) {
+  const cached = sessionStorage.getItem('sb_session');
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      shop = shop || parsed.shop;
+      host = host || parsed.host;
+    } catch {}
+  }
+}
+// Persist for subsequent navigations
+if (shop && host) {
+  sessionStorage.setItem('sb_session', JSON.stringify({ shop, host }));
+}
 
 const config = {
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -29,8 +44,14 @@ export default function App() {
   // Ensure we have required parameters
   if (!config.apiKey || !shop || !host) {
     console.error('Required parameters missing:', { apiKey: config.apiKey, shop, host });
+    // Try to resume auth
+    const lastShop = sessionStorage.getItem('sb_last_shop');
+    if (lastShop) {
+      window.location.href = `/api/auth?shop=${encodeURIComponent(JSON.parse(lastShop))}`;
+    }
     return <div>Loading...</div>;
   }
+  sessionStorage.setItem('sb_last_shop', JSON.stringify(shop));
 
   return (
     <PolarisProvider>

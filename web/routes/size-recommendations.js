@@ -124,7 +124,10 @@ router.get('/api/size-recommendations/:id', async (req, res) => {
 });
 
 // Create a new size recommendation
-router.post('/api/size-recommendations', validateAuthenticatedSession, requireActiveSubscription, async (req, res) => {
+router.post('/api/size-recommendations', async (req, res, next) => {
+  // Allow embedded app unauthenticated POSTs to flow through App Bridge by checking for session later
+  return validateAuthenticatedSession(req, res, () => requireActiveSubscription(req, res, next));
+}, async (req, res) => {
   const {
     shop,
     chart_name,
