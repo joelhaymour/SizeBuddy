@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import shopify, { validateAuthenticatedSession } from "../shopify.js";
-import { requireActiveSubscription } from './billing.js';
+import { getDb } from '../db.js';
 
 const router = Router();
 
@@ -124,10 +124,19 @@ router.get('/api/size-recommendations/:id', async (req, res) => {
 });
 
 // Create a new size recommendation
-router.post('/api/size-recommendations', async (req, res, next) => {
-  // Allow embedded app unauthenticated POSTs to flow through App Bridge by checking for session later
-  return validateAuthenticatedSession(req, res, () => requireActiveSubscription(req, res, next));
-}, async (req, res) => {
+function extractShopFromBearer(req) {
+  try {
+    const auth = req.headers.authorization || '';
+    const m = auth.match(/^Bearer\s+([^.]+)\.([^.]+)\.[^.]+$/);
+    if (!m) return null;
+    const payload = JSON.parse(Buffer.from(m[2].replace(/-/g,'+').replace(/_/g,'/'), 'base64').toString('utf8'));
+    const dest = payload.dest || payload.iss || payload.aud || '';
+    const match = dest.match(/https?:\/\/(.*?\.myshopify\.com)/);
+    return match ? match[1] : null;
+  } catch { return null; }
+}
+
+router.post('/api/size-recommendations', async (req, res) => {
   const {
     shop,
     chart_name,
@@ -139,7 +148,8 @@ router.post('/api/size-recommendations', async (req, res, next) => {
   } = req.body;
 
   const sessionShop = res.locals?.shopify?.session?.shop;
-  const resolvedShop = shop || sessionShop;
+  const tokenShop = extractShopFromBearer(req);
+  const resolvedShop = shop || sessionShop || tokenShop;
 
   if (!resolvedShop || !chart_name || !chart_data || !category || !fit_type) {
     return res.status(400).send({ error: "Missing required fields" });
@@ -149,10 +159,13 @@ router.post('/api/size-recommendations', async (req, res, next) => {
   console.log('Creating/updating recommendation with products:', products);
 
   try {
+    // Ensure subscription row exists (default Free)
+    const db = req.app.locals.db || await getDb();
+    await db.run('INSERT INTO subscriptions (shop, plan, status, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(shop) DO NOTHING', [resolvedShop, 'Free', 'active']);
     // Enforce plan limits (Free: 2, Pro: 4, Premium: unlimited)
-    const sub = await req.app.locals.db.get('SELECT plan FROM subscriptions WHERE shop = ?', [resolvedShop]);
+    const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [resolvedShop]);
     const plan = (sub?.plan || 'Free');
-    const existingCountRow = await req.app.locals.db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [resolvedShop]);
+    const existingCountRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [resolvedShop]);
     const cnt = existingCountRow?.cnt || 0;
     const limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 4 : 2);
     if (cnt >= limit) {
