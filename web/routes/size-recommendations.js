@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import shopify, { validateAuthenticatedSession } from "../shopify.js";
+import { requireActiveSubscription } from './billing.js';
 import { getDb } from '../db.js';
 
 const router = Router();
