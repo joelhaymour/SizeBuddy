@@ -14,7 +14,15 @@ export async function requireActiveSubscription(req, res, next) {
     const shop = session?.shop;
     if (!shop) return res.status(401).json({ error: 'No session' });
     const db = await getDb();
-    const sub = await db.get('SELECT plan, status FROM subscriptions WHERE shop = ?', [shop]);
+    let sub = await db.get('SELECT plan, status FROM subscriptions WHERE shop = ?', [shop]);
+    // Default to Free/active if no row yet so merchants can start immediately
+    if (!sub) {
+      await db.run(
+        'INSERT INTO subscriptions (shop, plan, status, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(shop) DO UPDATE SET plan=excluded.plan, status=excluded.status, updated_at=excluded.updated_at',
+        [shop, 'Free', 'active']
+      );
+      sub = { plan: 'Free', status: 'active' };
+    }
     if (sub && sub.status === 'active') return next();
     return res.status(402).json({ error: 'Subscription required', redirect: '/api/billing/redirect' });
   } catch (e) {
