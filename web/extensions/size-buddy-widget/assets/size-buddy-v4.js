@@ -4,8 +4,8 @@
   function initWidget() {
     console.log("Size Buddy Widget v4.0 - Fixed Version Loading");
     
-    // Get the widget container
-    const widget = document.getElementById('size-buddy-widget');
+    // Get the widget container (support multiple selectors: legacy id, custom element, or class)
+    const widget = document.querySelector('#size-buddy-widget, size-buddy-block, .size-buddy-block');
     if (!widget) {
       console.error('Widget container not found');
       return;
@@ -281,8 +281,8 @@
     modalContent.appendChild(contentDiv);
     modal.appendChild(modalContent);
     
-    // Clear widget and append our elements
-    widget.innerHTML = '';
+    // Clear widget and append our elements (only clear if it's not the whole document/body)
+    try { widget.innerHTML = ''; } catch (_) {}
     widget.appendChild(button);
     document.body.appendChild(modal);
     
