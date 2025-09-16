@@ -180,21 +180,31 @@ router.post('/api/size-recommendations', async (req, res) => {
       : JSON.stringify(chart_data);
     
     // Insert the size recommendation
-    const result = await req.app.locals.db.run(
-      `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [chart_name, chartDataString, category, subcategory || "", fit_type, resolvedShop]
-    );
-
-    const recommendationId = result.lastID;
-    if (!recommendationId) {
+    let recommendationId;
+    if (process.env.DATABASE_URL) {
       const row = await req.app.locals.db.get(
-        `SELECT id FROM size_charts WHERE name = ? AND shop_domain = ? ORDER BY id DESC LIMIT 1`,
-        [chart_name, resolvedShop]
+        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain)
+         VALUES (?, ?, ?, ?, ?, ?)
+         RETURNING id`,
+        [chart_name, chartDataString, category, subcategory || "", fit_type, resolvedShop]
       );
-      if (row?.id) {
-        console.log('Recovered recommendationId from DB lookup:', row.id);
-        recommendationId = row.id;
+      recommendationId = row?.id;
+    } else {
+      const result = await req.app.locals.db.run(
+        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [chart_name, chartDataString, category, subcategory || "", fit_type, resolvedShop]
+      );
+      recommendationId = result.lastID;
+      if (!recommendationId) {
+        const row = await req.app.locals.db.get(
+          `SELECT id FROM size_charts WHERE name = ? AND shop_domain = ? ORDER BY id DESC LIMIT 1`,
+          [chart_name, resolvedShop]
+        );
+        if (row?.id) {
+          console.log('Recovered recommendationId from DB lookup:', row.id);
+          recommendationId = row.id;
+        }
       }
     }
 
@@ -271,7 +281,7 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
            subcategory = ?, 
            fit_type = ?, 
            optional_measurements = ?,
-           updated_at = datetime('now')
+           updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND shop_domain = ?`,
       [
         chart_name,
