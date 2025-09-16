@@ -848,6 +848,81 @@ async function initializeDatabase() {
   // In production with Postgres, rely on pre-provisioned schema
   if (process.env.DATABASE_URL) {
     const db = await getDb();
+    // Ensure required tables exist (idempotent)
+    try {
+      await db.run(`CREATE TABLE IF NOT EXISTS size_charts (
+        id SERIAL PRIMARY KEY,
+        shop_domain TEXT NOT NULL,
+        name TEXT NOT NULL,
+        category TEXT CHECK (category IN ('tops','bottoms','bikinis','dresses')) NOT NULL,
+        subcategory TEXT,
+        fit_type TEXT NOT NULL,
+        chart_data TEXT NOT NULL,
+        optional_measurements TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )`);
+
+      await db.run(`CREATE TABLE IF NOT EXISTS product_charts (
+        id SERIAL PRIMARY KEY,
+        chart_id INTEGER NOT NULL REFERENCES size_charts(id) ON DELETE CASCADE,
+        product_id TEXT NOT NULL,
+        product_title TEXT NOT NULL,
+        product_handle TEXT NOT NULL,
+        product_image TEXT,
+        shop_domain TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT uq_chart_product UNIQUE(chart_id, product_id)
+      )`);
+
+      await db.run(`CREATE TABLE IF NOT EXISTS widget_customization (
+        shop_id TEXT PRIMARY KEY,
+        settings TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )`);
+
+      await db.run(`CREATE TABLE IF NOT EXISTS size_recommendation_analytics (
+        id SERIAL PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        chart_id INTEGER NOT NULL REFERENCES size_charts(id) ON DELETE CASCADE,
+        recommended_size TEXT NOT NULL,
+        measurements TEXT NOT NULL,
+        shop TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )`);
+
+      await db.run(`CREATE TABLE IF NOT EXISTS chart_sizes (
+        id SERIAL PRIMARY KEY,
+        chart_id INTEGER NOT NULL REFERENCES size_charts(id) ON DELETE CASCADE,
+        size TEXT NOT NULL,
+        waist TEXT,
+        chest TEXT,
+        hip TEXT,
+        inseam TEXT,
+        height TEXT,
+        weight TEXT,
+        score TEXT,
+        display_order INTEGER
+      )`);
+
+      await db.run(`CREATE TABLE IF NOT EXISTS subscriptions (
+        shop TEXT PRIMARY KEY,
+        plan TEXT NOT NULL,
+        status TEXT NOT NULL,
+        subscription_id TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ
+      )`);
+
+      // Helpful indexes for multi-tenant queries
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_size_charts_shop ON size_charts(shop_domain)`);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_product_charts_shop ON product_charts(shop_domain)`);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_reco_shop ON size_recommendation_analytics(shop)`);
+    } catch (e) {
+      console.error('Postgres schema init error:', e);
+    }
+
     console.log('Database (Postgres) initialized successfully');
     return db;
   }

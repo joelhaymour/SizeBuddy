@@ -21,8 +21,9 @@ export async function getDb() {
       return rows;
     },
     async run(query, params = []) {
-      await pool.query(query.replace(/\?/g, (m, i) => `$${i + 1}`), params);
-      return { changes: 1 };
+      const text = query.replace(/\?/g, (_, i) => `$${i + 1}`);
+      const result = await pool.query(text, params);
+      return { changes: result.rowCount };
     },
     async prepare(query) {
       const client = await pool.connect();
