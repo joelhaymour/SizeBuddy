@@ -11,25 +11,29 @@ export async function getDb() {
   const { Pool } = pg;
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.PGSSL === 'true' ? { rejectUnauthorized: false } : undefined });
   // Provide a minimal wrapper with get/all/run signatures
+  const toParams = (query) => {
+    let i = 0;
+    return query.replace(/\?/g, () => `$${++i}`);
+  };
   return {
     async get(query, params = []) {
-      const { rows } = await pool.query(query.replace(/\?/g, (m, i) => `$${i + 1}`), params);
+      const { rows } = await pool.query(toParams(query), params);
       return rows[0];
     },
     async all(query, params = []) {
-      const { rows } = await pool.query(query.replace(/\?/g, (m, i) => `$${i + 1}`), params);
+      const { rows } = await pool.query(toParams(query), params);
       return rows;
     },
     async run(query, params = []) {
-      const text = query.replace(/\?/g, (_, i) => `$${i + 1}`);
-      const result = await pool.query(text, params);
+      const result = await pool.query(toParams(query), params);
       return { changes: result.rowCount };
     },
     async prepare(query) {
       const client = await pool.connect();
+      const text = toParams(query);
       return {
         async run(...params) {
-          await client.query(query.replace(/\?/g, (m, i) => `$${i + 1}`), params);
+          await client.query(text, params);
         },
         async finalize() {
           client.release();

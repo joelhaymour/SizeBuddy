@@ -20,19 +20,17 @@ const dbPromise = getDb();
 async function initializeAnalyticsTables() {
   const db = await dbPromise;
   
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS analytics_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      shop TEXT NOT NULL,
-      event_type TEXT NOT NULL,
-      event_data TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_analytics_shop ON analytics_events(shop);
-    CREATE INDEX IF NOT EXISTS idx_analytics_event_type ON analytics_events(event_type);
-    CREATE INDEX IF NOT EXISTS idx_analytics_created_at ON analytics_events(created_at);
-  `);
+  // Use run for portability (SQLite/Postgres)
+  await db.run(`CREATE TABLE IF NOT EXISTS analytics_events (
+    id ${process.env.DATABASE_URL ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${process.env.DATABASE_URL ? '' : 'AUTOINCREMENT'},
+    shop TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    event_data TEXT,
+    created_at ${process.env.DATABASE_URL ? 'TIMESTAMPTZ' : 'DATETIME'} DEFAULT ${process.env.DATABASE_URL ? 'NOW()' : 'CURRENT_TIMESTAMP'}
+  )`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_analytics_shop ON analytics_events(shop)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_analytics_event_type ON analytics_events(event_type)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_analytics_created_at ON analytics_events(created_at)`);
 }
 
 initializeAnalyticsTables().catch(console.error);
