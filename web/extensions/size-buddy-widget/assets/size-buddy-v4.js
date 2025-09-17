@@ -305,12 +305,18 @@
       try {
         // Add timestamp to prevent caching
         const timestamp = Date.now();
-        const backendUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com');
-        const apiUrl = backendUrl + '/direct-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
+        // Preferred: use app proxy (works in production, signed by Shopify)
+        const proxyUrl = 'https://' + shopDomain + '/apps/size-buddy/api/size-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
+        // Fallback: direct backend endpoint (useful in development)
+        const directUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com') + '/direct-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
         
-        console.log('Fetching size data from:', apiUrl);
+        console.log('Fetching size data from:', proxyUrl);
         
-        const response = await fetch(apiUrl);
+        let response = await fetch(proxyUrl);
+        if (!response.ok) {
+          console.warn('Proxy fetch failed with', response.status, '– falling back to direct backend');
+          response = await fetch(directUrl);
+        }
         
         if (!response.ok) {
           throw new Error('Failed to fetch size data: ' + response.status);
