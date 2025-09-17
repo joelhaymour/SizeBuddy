@@ -306,9 +306,9 @@
         // Add timestamp to prevent caching
         const timestamp = Date.now();
         // Preferred: use app proxy (works in production, signed by Shopify)
-        const proxyUrl = 'https://' + shopDomain + '/apps/size-buddy/api/size-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
-        // Fallback: direct backend endpoint (useful in development)
-        const directUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com') + '/direct-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
+        const proxyUrl = 'https://' + shopDomain + '/apps/size-buddy/size-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
+        // Fallback (dev only): direct backend endpoint
+        const directUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com') + '/app-proxy/size-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
         
         console.log('Fetching size data from:', proxyUrl);
         
