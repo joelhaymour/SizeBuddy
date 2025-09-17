@@ -401,6 +401,91 @@ app.get("/ping", (req, res) => {
   res.json({ pong: true, timestamp: new Date().toISOString() });
 });
 
+// Public endpoint to fetch size chart data without Shopify session (used by storefront widget fallback)
+// This does NOT modify data and only returns chart info scoped by shop + product_id
+app.get('/public/size-charts', async (req, res) => {
+  try {
+    const { product_id, shop } = req.query;
+    if (!product_id || !shop) {
+      return res.status(400).json({ error: 'Missing product_id or shop parameter' });
+    }
+
+    const db = app.locals.db;
+    const productChart = await db.get(
+      `SELECT * FROM product_charts WHERE product_id = ? AND shop_domain = ? ORDER BY created_at DESC LIMIT 1`,
+      [product_id, shop]
+    );
+
+    if (!productChart) {
+      return res.json({ found: false, error: 'No size chart found for this product' });
+    }
+
+    const chart = await db.get(
+      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ?`,
+      [productChart.chart_id, shop]
+    );
+
+    if (!chart) {
+      return res.json({ found: false, error: 'Size chart not found' });
+    }
+
+    let chartData = null;
+    if (chart.chart_data) {
+      try {
+        chartData = typeof chart.chart_data === 'string' ? JSON.parse(chart.chart_data) : chart.chart_data;
+      } catch (e) {
+        return res.json({ found: false, error: 'Error parsing chart data', details: e.message });
+      }
+    }
+
+    if (!chartData || !chartData.sizes || chartData.sizes.length === 0) {
+      const chartSizes = await db.all(
+        `SELECT * FROM chart_sizes WHERE chart_id = ? ORDER BY display_order`,
+        [chart.id]
+      );
+      if (!chartSizes || chartSizes.length === 0) {
+        return res.json({ found: false, error: 'No sizes found for this chart' });
+      }
+      chartData = {
+        name: chart.name,
+        sizes: chartSizes.map(size => {
+          const o = { size: size.size, name: size.size };
+          ['waist','chest','hip','inseam','score','height','weight'].forEach(k => { if (size[k] !== null) o[k] = size[k]; });
+          return o;
+        }),
+        measurements: []
+      };
+      const first = chartSizes[0];
+      ['waist','chest','hip','inseam','height','weight'].forEach(k => {
+        if (first[k] !== null) chartData.measurements.push({ name: k, label: k.charAt(0).toUpperCase()+k.slice(1), unit: 'in' });
+      });
+    }
+
+    chartData.sizes = chartData.sizes.map(s => {
+      const n = { name: s.name || s.size, size: s.size || s.name };
+      Object.keys(s).forEach(k => { if (k !== 'name' && k !== 'size') n[k] = s[k]; });
+      return n;
+    });
+
+    res.json({
+      found: true,
+      chart: {
+        id: chart.id,
+        name: chart.name,
+        category: chart.category,
+        subcategory: chart.subcategory,
+        fit_type: chart.fit_type,
+        sizes: chartData.sizes,
+        measurements: chartData.measurements || [],
+        chart_data: chartData
+      }
+    });
+  } catch (error) {
+    console.error('Error in /public/size-charts:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Test endpoint to debug chart lookup (development only)
 if (process.env.NODE_ENV === 'development') {
 app.get("/test-chart-lookup", async (req, res) => {
