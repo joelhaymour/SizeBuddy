@@ -8,4 +8,4 @@ extension_points:
       - name: size-buddy
         source: blocks/size-buddy.liquid
         stylesheet: assets/size-buddy.css
-        javascript: assets/size-buddy.js 
+        javascript: assets/size-buddy-v4.js
