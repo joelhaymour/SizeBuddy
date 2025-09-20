@@ -402,10 +402,9 @@
                   }
                 });
                 
-                // Skip this measurement if it's optional and disabled
+                // Skip this measurement if it's optional and disabled (server uses optional_measurements true to mark optional)
                 const isOptionalAndDisabled = chart.optional_measurements && 
                                             typeof chart.optional_measurements === 'object' &&
-                                            key in chart.optional_measurements &&
                                             chart.optional_measurements[key] === true;
                 
                 console.log('Checking optional measurement:', key, {
@@ -1052,9 +1051,42 @@
               
               let matchScore = 0;
               
-              if (typeof sizeValue === 'string' && sizeValue.includes('-')) {
+              // Cup-size aware scoring (supports ranges like "C-D")
+              if (key === 'cup_size') {
+                const CUP_SIZES = ['A','B','C','D','DD','DDD','F','G','H+'];
+                const toIndex = (val) => {
+                  if (typeof val !== 'string') return null;
+                  const idx = CUP_SIZES.indexOf(val.trim().toUpperCase());
+                  return idx >= 0 ? idx : null;
+                };
+                const parseCupRange = (rangeStr) => {
+                  if (typeof rangeStr !== 'string' || !rangeStr.includes('-')) return null;
+                  const [minS, maxS] = rangeStr.split('-').map(s => s.trim().toUpperCase());
+                  const minI = toIndex(minS);
+                  const maxI = toIndex(maxS);
+                  if (minI === null || maxI === null) return null;
+                  return [Math.min(minI, maxI), Math.max(minI, maxI)];
+                };
+                const u = toIndex(String(userValue));
+                if (typeof sizeValue === 'string' && sizeValue.includes('-')) {
+                  const cr = parseCupRange(sizeValue);
+                  if (cr && u !== null) {
+                    const [minI, maxI] = cr;
+                    if (u >= minI && u <= maxI) {
+                      matchScore = 1.0;
+                    } else {
+                      const rangeWidth = Math.max(1, maxI - minI);
+                      const distance = u < minI ? (minI - u) : (u - maxI);
+                      const tolerance = Math.max(1, Math.round(rangeWidth * 0.5));
+                      matchScore = Math.max(0, 1 - (distance / tolerance));
+                    }
+                  }
+                } else {
+                  // Single cup letter compare
+                  matchScore = (String(sizeValue).trim().toUpperCase() === String(userValue).trim().toUpperCase()) ? 1.0 : 0.0;
+                }
+              } else if (typeof sizeValue === 'string' && sizeValue.includes('-')) {
                 const [min, max] = sizeValue.split('-').map(v => parseFloat(v.trim()));
-                
                 if (!isNaN(min) && !isNaN(max)) {
                   if (userValue >= min && userValue <= max) {
                     matchScore = 1.0;
