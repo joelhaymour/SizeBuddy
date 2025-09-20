@@ -1163,7 +1163,10 @@
                 return order.indexOf(a.size) - order.indexOf(b.size);
               });
               const bestSize = candidates[0].size;
-              resultDiv.innerHTML = '<div class="size-buddy-result">\n<h3>Your Recommended Size: ' + bestSize + '</h3>\n<p>Based on your measurements, we recommend size ' + bestSize + '.</p>\n</div>';
+              resultDiv.innerHTML = '<div class="size-buddy-result-container" style="margin:25px auto;padding:25px;background-color:#f1f9f1;border-radius:10px;text-align:center;max-width:400px;box-shadow:0 3px 10px rgba(0,0,0,0.08);border-left:4px solid #4caf50;opacity:0;transform:translateY(20px);">\n  <div class="size-buddy-title" style="font-size:18px;color:#333;margin-bottom:15px;opacity:0;transform:translateY(10px);">Your Recommended Size</div>\n  <div class="size-buddy-size" style="font-size:42px;font-weight:700;color:#4caf50;margin:20px 0;opacity:0;transform:scale(0.9);">' + bestSize + '</div>\n  <p class="size-buddy-message" style="color:#666;margin:15px 0 0;opacity:0;transform:translateY(10px);">Based on your measurements, we recommend size ' + bestSize + '.</p>\n</div>';
+              const styleEl = document.createElement('style');
+              styleEl.textContent = '@keyframes containerFadeIn{0%{opacity:0;transform:translateY(20px);}100%{opacity:1;transform:translateY(0);}}@keyframes titleFadeIn{0%{opacity:0;transform:translateY(10px);}100%{opacity:1;transform:translateY(0);}}@keyframes sizePop{0%{opacity:0;transform:scale(0.9);}70%{opacity:1;transform:scale(1.1);}100%{opacity:1;transform:scale(1);}}@keyframes messageFadeIn{0%{opacity:0;transform:translateY(10px);}100%{opacity:1;transform:translateY(0);}}.size-buddy-result-container{animation:containerFadeIn .6s ease-out forwards}.size-buddy-title{animation:titleFadeIn .5s ease-out forwards .3s}.size-buddy-size{animation:sizePop .7s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards .5s}.size-buddy-message{animation:messageFadeIn .5s ease-out forwards .7s}';
+              document.head.appendChild(styleEl);
               try { logSizeRecommendation(chart.id, bestSize, userMeasurements, shopDomain, productId); } catch {}
               return;
             }
