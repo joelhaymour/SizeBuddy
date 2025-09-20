@@ -179,6 +179,17 @@ router.post('/api/size-recommendations', async (req, res) => {
       ? chart_data 
       : JSON.stringify(chart_data);
     
+    // Normalize category to match DB constraint
+    // Normalize category against DB constraint (robust)
+    let normalizedCategory = category;
+    if (typeof category === 'string') {
+      const c = category.toLowerCase();
+      if (c.includes('bikini')) normalizedCategory = 'bikinis';
+      else if (c.includes('top')) normalizedCategory = 'tops';
+      else if (c.includes('bottom')) normalizedCategory = 'bottoms';
+      else if (c.includes('dress')) normalizedCategory = 'dresses';
+    }
+
     // Insert the size recommendation
     let recommendationId;
     if (process.env.DATABASE_URL) {
@@ -186,14 +197,14 @@ router.post('/api/size-recommendations', async (req, res) => {
         `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain)
          VALUES (?, ?, ?, ?, ?, ?)
          RETURNING id`,
-        [chart_name, chartDataString, category, subcategory || "", fit_type, resolvedShop]
+        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop]
       );
       recommendationId = row?.id;
     } else {
       const result = await req.app.locals.db.run(
         `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [chart_name, chartDataString, category, subcategory || "", fit_type, resolvedShop]
+        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop]
       );
       recommendationId = result.lastID;
       if (!recommendationId) {
