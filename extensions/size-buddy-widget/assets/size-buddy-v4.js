@@ -730,6 +730,56 @@ document.addEventListener('DOMContentLoaded', function() {
         return; // Exit early since we found exact matches
       }
       
+      // Special-case: if only cup_size is present (band optional), prefer the tightest range containing the cup
+      if (Array.isArray(measurementKeys) && measurementKeys.length === 1 && measurementKeys[0] === 'cup_size') {
+        const CUP_SIZES = ['A','B','C','D','DD','DDD','F','G','H+'];
+        const toIndex = (val) => {
+          if (typeof val !== 'string') return null;
+          const idx = CUP_SIZES.indexOf(val.trim().toUpperCase());
+          return idx >= 0 ? idx : null;
+        };
+        const parseRange = (str) => {
+          if (typeof str !== 'string' || !str.includes('-')) return null;
+          const [a,b] = str.split('-').map(s => s.trim().toUpperCase());
+          const ai = toIndex(a), bi = toIndex(b);
+          if (ai === null || bi === null) return null;
+          return [Math.min(ai,bi), Math.max(ai,bi)];
+        };
+        const u = toIndex(userMeasurements.cup_size);
+        if (u !== null) {
+          const order = ['XS','S','M','L','XL','XXL'];
+          const candidates = [];
+          chart.sizes.forEach(size => {
+            const r = parseRange(size.cup_size);
+            if (r) {
+              const [minI, maxI] = r;
+              if (u >= minI && u <= maxI) {
+                candidates.push({
+                  size: size.size || size.name,
+                  width: maxI - minI,
+                  centerDist: Math.abs(u - ((minI + maxI) / 2))
+                });
+              }
+            }
+          });
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => {
+              if (a.width !== b.width) return a.width - b.width; // narrowest first
+              if (a.centerDist !== b.centerDist) return a.centerDist - b.centerDist; // closest to center
+              return order.indexOf(a.size) - order.indexOf(b.size); // smallest size
+            });
+            const bestSize = candidates[0].size;
+            resultContainer.innerHTML = `
+              <div class="size-buddy-result">
+                <h3>Your Recommended Size: ${bestSize}</h3>
+                <p>Based on your measurements, we recommend size ${bestSize}.</p>
+              </div>`;
+            try { logSizeRecommendation(chart.id, bestSize, userMeasurements); } catch {}
+            return;
+          }
+        }
+      }
+
       // If no direct exact matches, proceed with the regular algorithm but with priority for boundary matches
       // Check if we have any measurements that are exact boundaries of ranges
       let boundaryMatches = [];

@@ -1128,6 +1128,48 @@
           });
         }
         
+        // Cup-only special-case: choose the tightest containing range, then smallest size
+        if (measurements.length === 1 && measurements[0].isCupSize && userMeasurements.cup_size) {
+          const CUP_SIZES = ['A','B','C','D','DD','DDD','F','G','H+'];
+          const toIndex = (val) => {
+            if (typeof val !== 'string') return null;
+            const idx = CUP_SIZES.indexOf(val.trim().toUpperCase());
+            return idx >= 0 ? idx : null;
+          };
+          const parseRange = (str) => {
+            if (typeof str !== 'string' || !str.includes('-')) return null;
+            const [a,b] = str.split('-').map(s => s.trim().toUpperCase());
+            const ai = toIndex(a), bi = toIndex(b);
+            if (ai === null || bi === null) return null;
+            return [Math.min(ai,bi), Math.max(ai,bi)];
+          };
+          const u = toIndex(userMeasurements.cup_size);
+          if (u !== null) {
+            const order = ['XS','S','M','L','XL','XXL'];
+            const candidates = [];
+            chart.sizes.forEach(size => {
+              const r = parseRange(size.cup_size);
+              if (r) {
+                const [minI, maxI] = r;
+                if (u >= minI && u <= maxI) {
+                  candidates.push({ size: size.size || size.name, width: maxI - minI, centerDist: Math.abs(u - ((minI + maxI) / 2)) });
+                }
+              }
+            });
+            if (candidates.length > 0) {
+              candidates.sort((a, b) => {
+                if (a.width !== b.width) return a.width - b.width;
+                if (a.centerDist !== b.centerDist) return a.centerDist - b.centerDist;
+                return order.indexOf(a.size) - order.indexOf(b.size);
+              });
+              const bestSize = candidates[0].size;
+              resultDiv.innerHTML = '<div class="size-buddy-result">\n<h3>Your Recommended Size: ' + bestSize + '</h3>\n<p>Based on your measurements, we recommend size ' + bestSize + '.</p>\n</div>';
+              try { logSizeRecommendation(chart.id, bestSize, userMeasurements, shopDomain, productId); } catch {}
+              return;
+            }
+          }
+        }
+
         // Improved logic for Bikini Tops / Bras
         if (chart.category && chart.category === 'Bikini Tops / Bras' && userMeasurements.band_size && userMeasurements.cup_size) {
           let bestScore = -Infinity;
