@@ -174,10 +174,10 @@ router.post('/api/size-recommendations', async (req, res) => {
     if (cnt >= limit) {
       return res.status(403).json({ error: `Plan limit reached. Your plan (${plan}) allows ${plan === 'Premium' ? 'unlimited' : limit} charts.` });
     }
-    // Ensure chart_data is a JSON string
-    const chartDataString = typeof chart_data === 'string' 
-      ? chart_data 
-      : JSON.stringify(chart_data);
+    // Ensure chart_data is a JSON string and extract optional_measurements
+    const chartDataObj = typeof chart_data === 'string' ? JSON.parse(chart_data) : chart_data;
+    const optional_measurements = chartDataObj?.optional_measurements || {};
+    const chartDataString = JSON.stringify(chartDataObj);
     
     // Normalize category to match DB constraint
     // Normalize category against DB constraint (robust)
@@ -194,17 +194,17 @@ router.post('/api/size-recommendations', async (req, res) => {
     let recommendationId;
     if (process.env.DATABASE_URL) {
       const row = await req.app.locals.db.get(
-        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
-        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop]
+        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements)]
       );
       recommendationId = row?.id;
     } else {
       const result = await req.app.locals.db.run(
-        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop]
+        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements)]
       );
       recommendationId = result.lastID;
       if (!recommendationId) {

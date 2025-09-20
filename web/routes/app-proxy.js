@@ -595,7 +595,8 @@ router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
         fit_type: chart.fit_type,
         sizes: chartData.sizes,
         measurements: chartData.measurements || [],
-        chart_data: chartData
+        chart_data: chartData,
+        optional_measurements: chart.optional_measurements ? JSON.parse(chart.optional_measurements) : {}
       }
     };
     

@@ -477,7 +477,8 @@ app.get('/public/size-charts', async (req, res) => {
         fit_type: chart.fit_type,
         sizes: chartData.sizes,
         measurements: chartData.measurements || [],
-        chart_data: chartData
+        chart_data: chartData,
+        optional_measurements: chart.optional_measurements ? JSON.parse(chart.optional_measurements) : {}
       }
     });
   } catch (error) {
@@ -1004,6 +1005,14 @@ async function initializeDatabase() {
       await db.run(`CREATE INDEX IF NOT EXISTS idx_size_charts_shop ON size_charts(shop_domain)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_product_charts_shop ON product_charts(shop_domain)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_reco_shop ON size_recommendation_analytics(shop)`);
+
+      // Ensure category check constraint includes 'bikinis' on existing databases
+      try {
+        await db.run(`ALTER TABLE size_charts DROP CONSTRAINT IF EXISTS size_charts_category_check`);
+        await db.run(`ALTER TABLE size_charts ADD CONSTRAINT size_charts_category_check CHECK (category IN ('tops','bottoms','bikinis','dresses'))`);
+      } catch (e) {
+        console.warn('Skipping category check constraint update:', e.message || e);
+      }
     } catch (e) {
       console.error('Postgres schema init error:', e);
     }

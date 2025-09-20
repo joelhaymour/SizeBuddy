@@ -353,7 +353,9 @@ export function SizeRecommendation({ shop, host }) {
     
     setEditingRecommendationId(chart.id);
     setChartName(chart.name);
-    setSelectedCategory(chart.category);
+    // Map DB categories to UI labels
+    const uiCategory = chart.category === 'bikinis' ? 'Bikini Tops / Bras' : chart.category;
+    setSelectedCategory(uiCategory);
     setSelectedFitType(chart.fit_type);
     
     // Handle chart_data properly whether it's a string or an object
@@ -375,6 +377,10 @@ export function SizeRecommendation({ shop, host }) {
       }
       
       console.log('Parsed chart data:', parsedChartData);
+      // Ensure optional_measurements exists for UI toggles
+      if (!parsedChartData.optional_measurements) {
+        parsedChartData.optional_measurements = {};
+      }
       setCurrentSizeRecommendation(parsedChartData);
     } catch (error) {
       console.error('Error processing chart data:', error);
@@ -502,7 +508,8 @@ export function SizeRecommendation({ shop, host }) {
       const requestData = {
         shop: fullShopDomain,
         chart_name: chartName,
-        category: selectedCategory,
+        // Map display category to DB-safe value
+        category: selectedCategory === 'Bikini Tops / Bras' ? 'bikinis' : selectedCategory,
         fit_type: selectedFitType,
         chart_data: processedSizeRecommendation, // Use the processed data
         products: selectedProducts.map(product => ({
