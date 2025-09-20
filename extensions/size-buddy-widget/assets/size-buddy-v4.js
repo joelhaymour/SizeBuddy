@@ -482,6 +482,21 @@ document.addEventListener('DOMContentLoaded', function() {
   // Function to calculate the size recommendation based on user input
   function calculateSizeRecommendation(chart, measurementKeys) {
     try {
+      const CUP_SIZES = ['A','B','C','D','DD','DDD','F','G','H+'];
+      const cupIndex = (val) => {
+        if (typeof val !== 'string') return null;
+        const upper = val.trim().toUpperCase();
+        const idx = CUP_SIZES.indexOf(upper);
+        return idx >= 0 ? idx : null;
+      };
+      const cupRange = (rangeStr) => {
+        if (typeof rangeStr !== 'string' || !rangeStr.includes('-')) return null;
+        const [minS, maxS] = rangeStr.split('-').map(s => s.trim().toUpperCase());
+        const minI = cupIndex(minS);
+        const maxI = cupIndex(maxS);
+        if (minI === null || maxI === null) return null;
+        return [Math.min(minI,maxI), Math.max(minI,maxI)];
+      };
       // Get the result container
       const resultContainer = document.getElementById('size-buddy-result-container');
       
@@ -571,26 +586,36 @@ document.addEventListener('DOMContentLoaded', function() {
             continue;
           }
           
-          // Check for range values
+          // Check for range values (supports cup_size range like "C-D")
           if (typeof sizeValue === 'string' && sizeValue.includes('-')) {
-            const rangeParts = sizeValue.split('-');
-            if (rangeParts.length === 2) {
-              const min = parseFloat(rangeParts[0]);
-              const max = parseFloat(rangeParts[1]);
-              
-              if (!isNaN(min) && !isNaN(max)) {
-                // Critical check: is the user value within this range (inclusive of boundaries)
-                if (!(userValue >= min && userValue <= max)) {
-                  allMeasurementsMatch = false;
-                } else {
-                  console.log(`EXACT RANGE MATCH: ${userValue} is within ${key} range ${min}-${max} for size ${size.size || size.name}`);
+            if (key === 'cup_size') {
+              const cr = cupRange(sizeValue);
+              const u = cupIndex(userValue);
+              if (cr && u !== null) {
+                const [minI, maxI] = cr;
+                if (u < minI || u > maxI) allMeasurementsMatch = false;
+                else console.log(`EXACT CUP RANGE MATCH: ${userValue} in ${sizeValue} for size ${size.size || size.name}`);
+              }
+            } else {
+              const rangeParts = sizeValue.split('-');
+              if (rangeParts.length === 2) {
+                const min = parseFloat(rangeParts[0]);
+                const max = parseFloat(rangeParts[1]);
+                if (!isNaN(min) && !isNaN(max)) {
+                  if (!(userValue >= min && userValue <= max)) allMeasurementsMatch = false;
+                  else console.log(`EXACT RANGE MATCH: ${userValue} is within ${key} range ${min}-${max} for size ${size.size || size.name}`);
                 }
               }
             }
-          } 
-          // For non-range values, exact match only
-          else if (sizeValue !== userValue) {
-            allMeasurementsMatch = false;
+          } else {
+            // For non-range values, exact match (handle cup_size string)
+            if (key === 'cup_size') {
+              const u = (typeof userValue === 'string') ? userValue.trim().toUpperCase() : '';
+              const s = (typeof sizeValue === 'string') ? sizeValue.trim().toUpperCase() : '';
+              if (u !== s) allMeasurementsMatch = false;
+            } else if (sizeValue !== userValue) {
+              allMeasurementsMatch = false;
+            }
           }
         }
         
@@ -722,18 +747,21 @@ document.addEventListener('DOMContentLoaded', function() {
           
           // Check for range values
           if (typeof sizeValue === 'string' && sizeValue.includes('-')) {
-            const [min, max] = sizeValue.split('-').map(v => parseFloat(v));
-            if (!isNaN(min) && !isNaN(max)) {
-              // Check if user value is exactly at min or max boundary
-              if (userValue === min || userValue === max) {
-                boundaryMatches.push({
-                  size: sizeName,
-                  key: key,
-                  value: userValue,
-                  boundary: userValue === min ? 'min' : 'max',
-                  range: `${min}-${max}`
-                });
-                console.log(`BOUNDARY MATCH: ${userValue} is at ${userValue === min ? 'lower' : 'upper'} boundary of ${key} range ${min}-${max} for size ${sizeName}`);
+            if (key === 'cup_size') {
+              const cr = cupRange(sizeValue);
+              const u = cupIndex(userValue);
+              if (cr && u !== null) {
+                const [minI, maxI] = cr;
+                if (u === minI || u === maxI) {
+                  boundaryMatches.push({ size: sizeName, key, value: userValue, boundary: u === minI ? 'min' : 'max', range: sizeValue });
+                }
+              }
+            } else {
+              const [min, max] = sizeValue.split('-').map(v => parseFloat(v));
+              if (!isNaN(min) && !isNaN(max)) {
+                if (userValue === min || userValue === max) {
+                  boundaryMatches.push({ size: sizeName, key, value: userValue, boundary: userValue === min ? 'min' : 'max', range: `${min}-${max}` });
+                }
               }
             }
           }
@@ -814,17 +842,22 @@ document.addEventListener('DOMContentLoaded', function() {
           
           // Check for range values
           if (typeof sizeValue === 'string' && sizeValue.includes('-')) {
-            const rangeParts = sizeValue.split('-');
-            if (rangeParts.length === 2) {
-              const min = parseFloat(rangeParts[0]);
-              const max = parseFloat(rangeParts[1]);
-              
-              if (!isNaN(min) && !isNaN(max)) {
-                // Critical check: is the user value within this range (inclusive of boundaries)
-                if (userValue >= min && userValue <= max) {
-                  rangeMatches[sizeName]++;
-                  hasRangeMatch = true;
-                  console.log(`EXACT MATCH: ${key} ${userValue} is within range ${min}-${max} for size ${sizeName}`);
+            if (key === 'cup_size') {
+              const cr = cupRange(sizeValue);
+              const u = cupIndex(userValue);
+              if (cr && u !== null) {
+                const [minI, maxI] = cr;
+                if (u >= minI && u <= maxI) {
+                  rangeMatches[sizeName]++; hasRangeMatch = true;
+                }
+              }
+            } else {
+              const rangeParts = sizeValue.split('-');
+              if (rangeParts.length === 2) {
+                const min = parseFloat(rangeParts[0]);
+                const max = parseFloat(rangeParts[1]);
+                if (!isNaN(min) && !isNaN(max)) {
+                  if (userValue >= min && userValue <= max) { rangeMatches[sizeName]++; hasRangeMatch = true; }
                 }
               }
             }
@@ -905,24 +938,42 @@ document.addEventListener('DOMContentLoaded', function() {
             let matchScore = 0;
             
             if (typeof sizeValue === 'string' && sizeValue.includes('-')) {
-              const [min, max] = sizeValue.split('-').map(v => parseFloat(v.trim()));
-              
-              if (!isNaN(min) && !isNaN(max)) {
-                if (userValue >= min && userValue <= max) {
-                  matchScore = 1.0;
-                } else {
-                  const rangeWidth = max - min;
-                  const distanceFromRange = userValue < min ? min - userValue : userValue - max;
-                  const tolerance = rangeWidth * 0.3;
-                  matchScore = Math.max(0, 1 - (distanceFromRange / tolerance));
+              if (key === 'cup_size') {
+                const cr = cupRange(sizeValue);
+                const u = cupIndex(userValue);
+                if (cr && u !== null) {
+                  const [minI, maxI] = cr;
+                  if (u >= minI && u <= maxI) matchScore = 1.0;
+                  else {
+                    const rangeWidth = maxI - minI || 1;
+                    const distance = u < minI ? minI - u : u - maxI;
+                    const tolerance = Math.max(1, Math.round(rangeWidth * 0.5));
+                    matchScore = Math.max(0, 1 - (distance / tolerance));
+                  }
+                }
+              } else {
+                const [min, max] = sizeValue.split('-').map(v => parseFloat(v.trim()));
+                if (!isNaN(min) && !isNaN(max)) {
+                  if (userValue >= min && userValue <= max) matchScore = 1.0;
+                  else {
+                    const rangeWidth = max - min;
+                    const distanceFromRange = userValue < min ? min - userValue : userValue - max;
+                    const tolerance = rangeWidth * 0.3;
+                    matchScore = Math.max(0, 1 - (distanceFromRange / tolerance));
+                  }
                 }
               }
             } else {
-              const numValue = parseFloat(sizeValue);
-              if (!isNaN(numValue)) {
-                const diff = Math.abs(userValue - numValue);
-                const tolerance = userValue * 0.1;
-                matchScore = Math.max(0, 1 - (diff / tolerance));
+              if (key === 'cup_size') {
+                // exact string compare for single cup values
+                matchScore = (String(sizeValue).trim().toUpperCase() === String(userValue).trim().toUpperCase()) ? 1.0 : 0.0;
+              } else {
+                const numValue = parseFloat(sizeValue);
+                if (!isNaN(numValue)) {
+                  const diff = Math.abs(userValue - numValue);
+                  const tolerance = userValue * 0.1;
+                  matchScore = Math.max(0, 1 - (diff / tolerance));
+                }
               }
             }
             
