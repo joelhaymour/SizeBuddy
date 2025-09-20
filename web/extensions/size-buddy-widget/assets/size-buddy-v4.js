@@ -1160,7 +1160,7 @@
               candidates.sort((a, b) => {
                 if (a.width !== b.width) return a.width - b.width;
                 if (a.centerDist !== b.centerDist) return a.centerDist - b.centerDist;
-                return order.indexOf(a.size) - order.indexOf(b.size);
+                return order.indexOf(b.size) - order.indexOf(a.size); // prefer larger size
               });
               const bestSize = candidates[0].size;
               resultDiv.innerHTML = '<div class="size-buddy-result-container" style="margin:25px auto;padding:25px;background-color:#f1f9f1;border-radius:10px;text-align:center;max-width:400px;box-shadow:0 3px 10px rgba(0,0,0,0.08);border-left:4px solid #4caf50;opacity:0;transform:translateY(20px);">\n  <div class="size-buddy-title" style="font-size:18px;color:#333;margin-bottom:15px;opacity:0;transform:translateY(10px);">Your Recommended Size</div>\n  <div class="size-buddy-size" style="font-size:42px;font-weight:700;color:#4caf50;margin:20px 0;opacity:0;transform:scale(0.9);">' + bestSize + '</div>\n  <p class="size-buddy-message" style="color:#666;margin:15px 0 0;opacity:0;transform:translateY(10px);">Based on your measurements, we recommend size ' + bestSize + '.</p>\n</div>';

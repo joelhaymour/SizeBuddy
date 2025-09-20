@@ -766,7 +766,7 @@ document.addEventListener('DOMContentLoaded', function() {
             candidates.sort((a, b) => {
               if (a.width !== b.width) return a.width - b.width; // narrowest first
               if (a.centerDist !== b.centerDist) return a.centerDist - b.centerDist; // closest to center
-              return order.indexOf(a.size) - order.indexOf(b.size); // smallest size
+              return order.indexOf(b.size) - order.indexOf(a.size); // prefer larger size
             });
             const bestSize = candidates[0].size;
             // Animated result block (same as other categories)
