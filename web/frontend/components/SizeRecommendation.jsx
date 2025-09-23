@@ -818,6 +818,7 @@ export function SizeRecommendation({ shop, host }) {
       const isCupSizeArray = isCupSize && Array.isArray(value_parsed) && value_parsed.length === 2;
       const currentValue = isCupSizeArray ? value_parsed[0] : (isCupSize ? 0 : value_parsed[0]);
       const endValue = isCupSizeArray ? value_parsed[1] : (isCupSize ? cupSizes.length - 1 : value_parsed[1]);
+      const isSingleCup = isCupSize && currentValue === endValue;
 
       const formatDisplayValue = (val) => {
         if (field === 'height') {
@@ -895,7 +896,11 @@ export function SizeRecommendation({ shop, host }) {
                   minWidth: '140px',
                   textAlign: 'center'
                 }}>
-                  {isCupSize ? `${formatDisplayValue(currentValue)} - ${formatDisplayValue(endValue)}` : `${formatDisplayValue(Math.max(currentValue, min))} - ${formatDisplayValue(Math.max(endValue, min))}`}
+                  {isCupSize 
+                    ? (isSingleCup 
+                        ? `${formatDisplayValue(currentValue)}` 
+                        : `${formatDisplayValue(currentValue)} - ${formatDisplayValue(endValue)}`)
+                    : `${formatDisplayValue(Math.max(currentValue, min))} - ${formatDisplayValue(Math.max(endValue, min))}`}
                 </div>
               </div>
 
@@ -936,35 +941,44 @@ export function SizeRecommendation({ shop, host }) {
               }}>
                 {isCupSize ? (
                   <div style={{ width: '100%', position: 'relative' }}>
-                    <RangeSlider
-                      label={label}
-                      labelHidden
-                      value={[currentValue, endValue]}
-                      min={0}
-                      max={cupSizes.length - 1}
-                      step={1}
-                      output={false}
-                      onChange={(values) => {
-                        console.log("Cup slider moved to:", values);
-                        if (!Array.isArray(values) || values.length !== 2) return;
-                        
-                        // Ensure the values are integers and within bounds
-                        const startIndex = Math.min(Math.max(Math.round(values[0]), 0), cupSizes.length - 1);
-                        const endIndex = Math.min(Math.max(Math.round(values[1]), 0), cupSizes.length - 1);
-                        
-                        // Ensure end is greater than or equal to start
-                        const validEndIndex = Math.max(endIndex, startIndex);
-                        
-                        const startCup = cupSizes[startIndex];
-                        const endCup = cupSizes[validEndIndex];
-                        
-                        // Update cup size range
-                        const cupSizeRange = `${startCup}-${endCup}`;
-                        console.log("Setting cup size range:", cupSizeRange);
-                        handleMeasurementChange(sizeIndex, field, cupSizeRange);
-                      }}
-                      allowOverlap={true}
-                    />
+                    {isSingleCup ? (
+                      <RangeSlider
+                        label={label}
+                        labelHidden
+                        value={currentValue}
+                        min={0}
+                        max={cupSizes.length - 1}
+                        step={1}
+                        output={false}
+                        onChange={(index) => {
+                          const idx = Math.min(Math.max(Math.round(index), 0), cupSizes.length - 1);
+                          const cup = cupSizes[idx];
+                          const cupSizeRange = `${cup}-${cup}`;
+                          handleMeasurementChange(sizeIndex, field, cupSizeRange);
+                        }}
+                      />
+                    ) : (
+                      <RangeSlider
+                        label={label}
+                        labelHidden
+                        value={[currentValue, endValue]}
+                        min={0}
+                        max={cupSizes.length - 1}
+                        step={1}
+                        output={false}
+                        onChange={(values) => {
+                          if (!Array.isArray(values) || values.length !== 2) return;
+                          const startIndex = Math.min(Math.max(Math.round(values[0]), 0), cupSizes.length - 1);
+                          const endIndex = Math.min(Math.max(Math.round(values[1]), 0), cupSizes.length - 1);
+                          const validEndIndex = Math.max(endIndex, startIndex);
+                          const startCup = cupSizes[startIndex];
+                          const endCup = cupSizes[validEndIndex];
+                          const cupSizeRange = `${startCup}-${endCup}`;
+                          handleMeasurementChange(sizeIndex, field, cupSizeRange);
+                        }}
+                        allowOverlap={true}
+                      />
+                    )}
                   </div>
                 ) : (
                   <RangeSlider
@@ -981,6 +995,45 @@ export function SizeRecommendation({ shop, host }) {
                 )}
               </div>
             </div>
+
+            {/* Single cup size toggle (only for cup_size) */}
+            {isCupSize && (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginTop: '10px',
+                padding: '8px',
+                backgroundColor: '#f9fafb',
+                borderRadius: '4px'
+              }}>
+                <Text as="span" variant="bodyMd">Use single cup size</Text>
+                <div className="Polaris-Toggle">
+                  <input
+                    type="checkbox"
+                    id={`single-${field}-${sizeIndex}`}
+                    className="Polaris-Toggle__Input"
+                    checked={isSingleCup}
+                    onChange={(e) => {
+                      const makeSingle = e.target.checked;
+                      if (makeSingle) {
+                        const cup = cupSizes[currentValue];
+                        handleMeasurementChange(sizeIndex, field, `${cup}-${cup}`);
+                      } else {
+                        const cupStart = cupSizes[currentValue];
+                        const cupEnd = cupSizes[Math.min(currentValue + 1, cupSizes.length - 1)];
+                        handleMeasurementChange(sizeIndex, field, `${cupStart}-${cupEnd}`);
+                      }
+                    }}
+                  />
+                  <label className="Polaris-Toggle__Label" htmlFor={`single-${field}-${sizeIndex}`}>
+                    <span className="Polaris-Toggle__Track">
+                      <span className="Polaris-Toggle__Icon"></span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
 
             {isOptionalMeasurement && (
               <div style={{ 
