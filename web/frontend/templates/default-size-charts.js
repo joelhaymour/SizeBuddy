@@ -160,26 +160,28 @@ export const defaultSizeCharts = {
         { size: "XXL", dress_size: "20-22" }
       ]
     },
+    // Slim: shift up one label (someone normally L -> XL)
     slim: {
       name: "Dresses - Slim Fit",
       sizes: [
-        { size: "XS", dress_size: "2-4" },
-        { size: "S", dress_size: "6-8" },
-        { size: "M", dress_size: "10-12" },
-        { size: "L", dress_size: "14-16" },
-        { size: "XL", dress_size: "18-20" },
-        { size: "XXL", dress_size: "22-24" }
+        { size: "XS", dress_size: "0-2" },               // baseline
+        { size: "S", dress_size: "0-2" },                // from XS regular
+        { size: "M", dress_size: "4-6" },                // from S regular
+        { size: "L", dress_size: "8-10" },               // from M regular
+        { size: "XL", dress_size: "12-14" },             // from L regular
+        { size: "XXL", dress_size: "16-18" }             // from XL regular
       ]
     },
+    // Loose: shift down one label (someone normally L -> M)
     loose: {
       name: "Dresses - Loose Fit",
       sizes: [
-        { size: "XS", dress_size: "00-0" },
-        { size: "S", dress_size: "2-4" },
-        { size: "M", dress_size: "6-8" },
-        { size: "L", dress_size: "10-12" },
-        { size: "XL", dress_size: "14-16" },
-        { size: "XXL", dress_size: "18-20" }
+        { size: "XS", dress_size: "4-6" },               // from S regular
+        { size: "S", dress_size: "8-10" },               // from M regular
+        { size: "M", dress_size: "12-14" },              // from L regular
+        { size: "L", dress_size: "16-18" },              // from XL regular
+        { size: "XL", dress_size: "20-22" },             // from XXL regular
+        { size: "XXL", dress_size: "20-22" }             // cap
       ]
     }
   },
