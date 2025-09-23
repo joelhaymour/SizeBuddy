@@ -938,7 +938,7 @@ export function SizeRecommendation({ shop, host }) {
                     <RangeSlider
                       label={label}
                       labelHidden
-                      value={[currentValue, Math.min(currentValue + 1, cupSizes.length - 1)]}
+                      value={[currentValue, endValue]}
                       min={0}
                       max={cupSizes.length - 1}
                       step={1}
@@ -957,7 +957,7 @@ export function SizeRecommendation({ shop, host }) {
                         const startCup = cupSizes[startIndex];
                         const endCup = cupSizes[validEndIndex];
                         
-                        // Update the cup size with the range - this is the key change
+                        // Update cup size range
                         const cupSizeRange = `${startCup}-${endCup}`;
                         console.log("Setting cup size range:", cupSizeRange);
                         handleMeasurementChange(sizeIndex, field, cupSizeRange);
