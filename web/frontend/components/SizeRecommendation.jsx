@@ -963,7 +963,7 @@ export function SizeRecommendation({ shop, host }) {
                         console.log("Setting cup size range:", cupSizeRange);
                         handleMeasurementChange(sizeIndex, field, cupSizeRange);
                       }}
-                      allowOverlap={false}
+                      allowOverlap={true}
                     />
                   </div>
                 ) : (
