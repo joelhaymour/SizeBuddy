@@ -74,33 +74,34 @@ export const defaultSizeCharts = {
       regular: {
         name: "Bikini Top - Normal Fit",
         sizes: [
-          { size: "XS", band_size: "28-34", cup_size: "A-C", relative_size: "28A-34C" },
-          { size: "S", band_size: "28-36", cup_size: "B-D", relative_size: "28B-36D" },
-          { size: "M", band_size: "30-38", cup_size: "C-DD", relative_size: "30C-38DD" },
-          { size: "L", band_size: "30-42", cup_size: "D-F", relative_size: "30D-42F" },
-          { size: "XL", band_size: "30-44", cup_size: "DD-G", relative_size: "30DD-44G" },
-          { size: "XXL", band_size: "32-50+", cup_size: "DDD-H+", relative_size: "32DDD-50H+" }
+          { size: "XS", band_size: "28-34", cup_size: "A-B", relative_size: "28A-34B" },
+          { size: "S", band_size: "28-36", cup_size: "B-C", relative_size: "28B-36C" },
+          { size: "M", band_size: "30-38", cup_size: "C-D", relative_size: "30C-38D" },
+          { size: "L", band_size: "30-42", cup_size: "D-DD", relative_size: "30D-42DD" },
+          { size: "XL", band_size: "30-44", cup_size: "DD-DDD", relative_size: "30DD-44DDD" },
+          { size: "XXL", band_size: "32-50+", cup_size: "DDD-F", relative_size: "32DDD-50F" }
         ]
       },
       slim: {
         name: "Bikini Top - Slim Fit",
         sizes: [
-          { size: "S", band_size: "28-34", cup_size: "A-C", relative_size: "28A-34C" },
-          { size: "M", band_size: "28-36", cup_size: "B-D", relative_size: "28B-36D" },
-          { size: "L", band_size: "30-38", cup_size: "C-DD", relative_size: "30C-38DD" },
-          { size: "XL", band_size: "30-42", cup_size: "D-F", relative_size: "30D-42F" },
-          { size: "XXL", band_size: "30-48+", cup_size: "DD-H+", relative_size: "30DD-48H+" }
+          { size: "XS", band_size: "28-34", cup_size: "A-B", relative_size: "28A-34B" },
+          { size: "S", band_size: "28-36", cup_size: "B-C", relative_size: "28B-36C" },
+          { size: "M", band_size: "30-38", cup_size: "C-D", relative_size: "30C-38D" },
+          { size: "L", band_size: "30-42", cup_size: "D-DD", relative_size: "30D-42DD" },
+          { size: "XL", band_size: "30-44", cup_size: "DD-DDD", relative_size: "30DD-44DDD" },
+          { size: "XXL", band_size: "30-48+", cup_size: "DDD-F", relative_size: "30DDD-48F" }
         ]
       },
       loose: {
         name: "Bikini Top - Loose Fit",
         sizes: [
-          { size: "XS", band_size: "28-34", cup_size: "A-C", relative_size: "28A-34C" },
-          { size: "S", band_size: "28-36", cup_size: "B-D", relative_size: "28B-36D" },
-          { size: "M", band_size: "30-38", cup_size: "C-DD", relative_size: "30C-38DD" },
-          { size: "L", band_size: "30-42", cup_size: "D-F", relative_size: "30D-42F" },
-          { size: "XL", band_size: "30-44", cup_size: "DD-G", relative_size: "30DD-44G" },
-          { size: "XXL", band_size: "32-50+", cup_size: "DDD-H+", relative_size: "32DDD-50H+" }
+          { size: "XS", band_size: "28-34", cup_size: "A-B", relative_size: "28A-34B" },
+          { size: "S", band_size: "28-36", cup_size: "B-C", relative_size: "28B-36C" },
+          { size: "M", band_size: "30-38", cup_size: "C-D", relative_size: "30C-38D" },
+          { size: "L", band_size: "30-42", cup_size: "D-DD", relative_size: "30D-42DD" },
+          { size: "XL", band_size: "30-44", cup_size: "DD-DDD", relative_size: "30DD-44DDD" },
+          { size: "XXL", band_size: "32-50+", cup_size: "DDD-F", relative_size: "32DDD-50F" }
         ]
       }
     },
@@ -176,33 +177,34 @@ export const defaultSizeCharts = {
     regular: {
       name: "Bikini Top - Normal Fit",
       sizes: [
-        { size: "XS", band_size: "28-34", cup_size: "A-C", relative_size: "28A-34C" },
-        { size: "S", band_size: "28-36", cup_size: "B-D", relative_size: "28B-36D" },
-        { size: "M", band_size: "30-38", cup_size: "C-DD", relative_size: "30C-38DD" },
-        { size: "L", band_size: "30-42", cup_size: "D-F", relative_size: "30D-42F" },
-        { size: "XL", band_size: "30-44", cup_size: "DD-G", relative_size: "30DD-44G" },
-        { size: "XXL", band_size: "32-50+", cup_size: "DDD-H+", relative_size: "32DDD-50H+" }
+        { size: "XS", band_size: "28-34", cup_size: "A-B", relative_size: "28A-34B" },
+        { size: "S", band_size: "28-36", cup_size: "B-C", relative_size: "28B-36C" },
+        { size: "M", band_size: "30-38", cup_size: "C-D", relative_size: "30C-38D" },
+        { size: "L", band_size: "30-42", cup_size: "D-DD", relative_size: "30D-42DD" },
+        { size: "XL", band_size: "30-44", cup_size: "DD-DDD", relative_size: "30DD-44DDD" },
+        { size: "XXL", band_size: "32-50+", cup_size: "DDD-F", relative_size: "32DDD-50F" }
       ]
     },
     slim: {
       name: "Bikini Top - Slim Fit",
       sizes: [
-        { size: "S", band_size: "28-34", cup_size: "A-C", relative_size: "28A-34C" },
-        { size: "M", band_size: "28-36", cup_size: "B-D", relative_size: "28B-36D" },
-        { size: "L", band_size: "30-38", cup_size: "C-DD", relative_size: "30C-38DD" },
-        { size: "XL", band_size: "30-42", cup_size: "D-F", relative_size: "30D-42F" },
-        { size: "XXL", band_size: "30-48+", cup_size: "DD-H+", relative_size: "30DD-48H+" }
+        { size: "XS", band_size: "28-34", cup_size: "A-B", relative_size: "28A-34B" },
+        { size: "S", band_size: "28-36", cup_size: "B-C", relative_size: "28B-36C" },
+        { size: "M", band_size: "30-38", cup_size: "C-D", relative_size: "30C-38D" },
+        { size: "L", band_size: "30-42", cup_size: "D-DD", relative_size: "30D-42DD" },
+        { size: "XL", band_size: "30-44", cup_size: "DD-DDD", relative_size: "30DD-44DDD" },
+        { size: "XXL", band_size: "30-48+", cup_size: "DDD-F", relative_size: "30DDD-48F" }
       ]
     },
     loose: {
       name: "Bikini Top - Loose Fit",
       sizes: [
-        { size: "XS", band_size: "28-34", cup_size: "A-C", relative_size: "28A-34C" },
-        { size: "S", band_size: "28-36", cup_size: "B-D", relative_size: "28B-36D" },
-        { size: "M", band_size: "30-38", cup_size: "C-DD", relative_size: "30C-38DD" },
-        { size: "L", band_size: "30-42", cup_size: "D-F", relative_size: "30D-42F" },
-        { size: "XL", band_size: "30-44", cup_size: "DD-G", relative_size: "30DD-44G" },
-        { size: "XXL", band_size: "32-50+", cup_size: "DDD-H+", relative_size: "32DDD-50H+" }
+        { size: "XS", band_size: "28-34", cup_size: "A-B", relative_size: "28A-34B" },
+        { size: "S", band_size: "28-36", cup_size: "B-C", relative_size: "28B-36C" },
+        { size: "M", band_size: "30-38", cup_size: "C-D", relative_size: "30C-38D" },
+        { size: "L", band_size: "30-42", cup_size: "D-DD", relative_size: "30D-42DD" },
+        { size: "XL", band_size: "30-44", cup_size: "DD-DDD", relative_size: "30DD-44DDD" },
+        { size: "XXL", band_size: "32-50+", cup_size: "DDD-F", relative_size: "32DDD-50F" }
       ]
     }
   }
