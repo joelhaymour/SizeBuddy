@@ -747,7 +747,8 @@ export function SizeRecommendation({ shop, host }) {
         
         if (isCupSize) {
           if (typeof val === 'string') {
-            const parts = val.split('-').map(p => p.replace('+', ''));
+            // Split on '-' and trim whitespace; keep '+' (e.g., 'H+') intact
+            const parts = val.split('-').map(p => p.trim());
             if (parts.length === 2) {
               const startIdx = cupSizes.indexOf(parts[0]);
               const endIdx = cupSizes.indexOf(parts[1]);
@@ -816,7 +817,7 @@ export function SizeRecommendation({ shop, host }) {
       const value_parsed = parseValue(value);
       const isCupSizeArray = isCupSize && Array.isArray(value_parsed) && value_parsed.length === 2;
       const currentValue = isCupSizeArray ? value_parsed[0] : (isCupSize ? 0 : value_parsed[0]);
-      const endValue = isCupSizeArray ? value_parsed[1] : (isCupSize ? Math.min(currentValue + 1, cupSizes.length - 1) : value_parsed[1]);
+      const endValue = isCupSizeArray ? value_parsed[1] : (isCupSize ? cupSizes.length - 1 : value_parsed[1]);
 
       const formatDisplayValue = (val) => {
         if (field === 'height') {
