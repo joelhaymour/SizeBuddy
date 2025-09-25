@@ -50,6 +50,8 @@ function getDateRange(range) {
   }
 }
 
+const isPostgres = !!process.env.DATABASE_URL;
+
 // Get analytics data
 router.get("/api/analytics", validateAuthenticatedSession, async (req, res) => {
   try {
@@ -100,19 +102,23 @@ router.get("/api/analytics", validateAuthenticatedSession, async (req, res) => {
     `, [shop, shop, startDate.toISOString(), shop]);
     
     // Get top products by views (from analytics_events)
+    const productIdExpr = isPostgres
+      ? `(ae.event_data::json ->> 'product_id')`
+      : `json_extract(ae.event_data, '$.product_id')`;
+
     const topProductsByViews = await db.all(`
       SELECT 
-        json_extract(ae.event_data, '$.product_id') as product_id,
+        ${productIdExpr} as product_id,
         (
           SELECT product_title FROM product_charts pc
-          WHERE pc.product_id = json_extract(ae.event_data, '$.product_id') 
+          WHERE pc.product_id = ${productIdExpr}
           AND pc.shop_domain = ?
           ORDER BY pc.id DESC
           LIMIT 1
         ) as product_title,
         (
           SELECT product_handle FROM product_charts pc
-          WHERE pc.product_id = json_extract(ae.event_data, '$.product_id') 
+          WHERE pc.product_id = ${productIdExpr}
           AND pc.shop_domain = ?
           ORDER BY pc.id DESC
           LIMIT 1
@@ -122,7 +128,7 @@ router.get("/api/analytics", validateAuthenticatedSession, async (req, res) => {
       WHERE ae.event_type = 'widget_view' 
         AND ae.created_at >= ? 
         AND ae.shop = ?
-      GROUP BY json_extract(ae.event_data, '$.product_id')
+      GROUP BY ${productIdExpr}
       ORDER BY view_count DESC
       LIMIT 10
     `, [shop, shop, startDate.toISOString(), shop]);
@@ -238,12 +244,13 @@ router.get("/api/analytics/product/:productId", validateAuthenticatedSession, as
     }
     
     // Get product analytics
+    const prodIdExpr2 = isPostgres ? `(ae.event_data::json ->> 'product_id')` : `json_extract(ae.event_data, '$.product_id')`;
     const analytics = await db.get(`
       SELECT 
         COUNT(ae.id) as total_views,
         COUNT(sra.id) as total_recommendations
       FROM product_charts pc
-      LEFT JOIN analytics_events ae ON json_extract(ae.event_data, '$.product_id') = pc.product_id 
+      LEFT JOIN analytics_events ae ON ${prodIdExpr2} = pc.product_id 
         AND ae.event_type = 'widget_view' 
         AND ae.created_at >= ?
         AND ae.shop = ?
@@ -265,13 +272,14 @@ router.get("/api/analytics/product/:productId", validateAuthenticatedSession, as
     `, [productId, startDate.toISOString(), shop]);
     
     // Get daily activity
+    const dateExpr = isPostgres ? `CAST(created_at AS DATE)` : `DATE(created_at)`;
     const dailyActivity = await db.all(`
       SELECT 
-        DATE(created_at) as date,
+        ${dateExpr} as date,
         COUNT(*) as recommendations
       FROM size_recommendation_analytics
       WHERE product_id = ? AND created_at >= ? AND shop = ?
-      GROUP BY DATE(created_at)
+      GROUP BY ${dateExpr}
       ORDER BY date DESC
       LIMIT 30
     `, [productId, startDate.toISOString(), shop]);
