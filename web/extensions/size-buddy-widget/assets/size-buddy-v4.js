@@ -999,41 +999,41 @@
             }
           });
         } else if (isBottomsCategory && hasWaistAndHip) {
-          // For bottoms, we'll use a weighted average of waist and hip measurements
+          // For bottoms, use waist as hard cap, hip as tie-breaker
           chart.sizes.forEach(size => {
-            let score = 0;
-            let measurementsCompared = 0;
-            let sizeScoreDetails = [];
+            const [wMin, wMax] = (size.waist || '').split('-').map(v => parseFloat(v.trim()));
+            const [hMin, hMax] = (size.hip || '').split('-').map(v => parseFloat(v.trim()));
+            if (isNaN(wMin) || isNaN(wMax) || isNaN(hMin) || isNaN(hMax)) return;
 
-            // Parse waist range
-            if (size.waist) {
-              const [waistMin, waistMax] = size.waist.split('-').map(v => parseFloat(v.trim()));
-              if (!isNaN(waistMin) && !isNaN(waistMax)) {
-                const waistScore = calculateMeasurementScore(userMeasurements.waist, waistMin, waistMax);
-                score += waistScore * 0.7; // 70% weight for waist (increased from 40%)
-                measurementsCompared++;
-                sizeScoreDetails.push(`Waist: ${waistScore.toFixed(2)}`);
-              }
+            const waist = userMeasurements.waist;
+            const hip = userMeasurements.hip;
+
+            // Hard exclude if waist is outside by more than 1 inch
+            if (waist < wMin - 1 || waist > wMax + 1) return;
+
+            // Base score from waist proximity (inverse distance to center)
+            const wCenter = (wMin + wMax) / 2;
+            const wRange = (wMax - wMin) || 1;
+            const waistScore = Math.max(0, 1 - (Math.abs(waist - wCenter) / (wRange / 2)));
+
+            // Hip contributes smaller weight; prefer sizes where hip is inside
+            let hipScore = 0;
+            if (hip >= hMin && hip <= hMax) {
+              // Bonus if hip is also inside
+              const hCenter = (hMin + hMax) / 2;
+              const hRange = (hMax - hMin) || 1;
+              hipScore = 0.3 + 0.2 * Math.max(0, 1 - (Math.abs(hip - hCenter) / (hRange / 2)));
+            } else {
+              // Small penalty when outside
+              const dist = hip < hMin ? (hMin - hip) : (hip - hMax);
+              const tol = Math.max(1, (hMax - hMin) * 0.25);
+              hipScore = Math.max(0, 0.3 - (dist / tol));
             }
 
-            // Parse hip range
-            if (size.hip) {
-              const [hipMin, hipMax] = size.hip.split('-').map(v => parseFloat(v.trim()));
-              if (!isNaN(hipMin) && !isNaN(hipMax)) {
-                const hipScore = calculateMeasurementScore(userMeasurements.hip, hipMin, hipMax);
-                score += hipScore * 0.3; // 30% weight for hip (decreased from 60%)
-                measurementsCompared++;
-                sizeScoreDetails.push(`Hip: ${hipScore.toFixed(2)}`);
-              }
-            }
-
-            if (measurementsCompared > 0) {
-              const finalScore = score / measurementsCompared;
-              if (finalScore > bestScore) {
-                bestScore = finalScore;
-                bestSize = size.size || size.name; // Use size name instead of entire object
-                scoreDetails = sizeScoreDetails;
-              }
+            const finalScore = (0.8 * waistScore) + (0.2 * hipScore);
+            if (finalScore > bestScore) {
+              bestScore = finalScore;
+              bestSize = size.size || size.name;
             }
           });
         } else {
