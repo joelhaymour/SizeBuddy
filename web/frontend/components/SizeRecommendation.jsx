@@ -610,13 +610,6 @@ export function SizeRecommendation({ shop, host }) {
         <Card sectioned>
           <Button fullWidth onClick={() => handleCategorySelect('tops')}>
             <Box padding="4" alignment="center">
-              <div style={{ width: '90px', height: '90px', marginBottom: '8px', color: 'var(--p-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {/* Classic T-shirt outline */}
-                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-                  <path d="M16 16 L8 24 L20 28 V52 H44 V28 L56 24 L48 16 L40 24 H24 L16 16 Z" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                  <path d="M24 28 V52 M44 28 V52" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                </svg>
-              </div>
               <Text variant="headingMd" as="h3">Tops</Text>
             </Box>
           </Button>
@@ -626,13 +619,6 @@ export function SizeRecommendation({ shop, host }) {
         <Card sectioned>
           <Button fullWidth onClick={() => handleCategorySelect('bottoms')}>
             <Box padding="4" alignment="center">
-              <div style={{ width: '90px', height: '90px', marginBottom: '8px', color: 'var(--p-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {/* Classic pants outline */}
-                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-                  <rect x="20" y="16" width="24" height="36" rx="4" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                  <path d="M32 52 V32 M20 52 L28 32 M44 52 L36 32" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                </svg>
-              </div>
               <Text variant="headingMd" as="h3">Bottoms</Text>
             </Box>
           </Button>
@@ -642,14 +628,6 @@ export function SizeRecommendation({ shop, host }) {
         <Card sectioned>
           <Button fullWidth onClick={() => handleCategorySelect('dresses')}>
             <Box padding="4" alignment="center">
-              <div style={{ width: '90px', height: '90px', marginBottom: '8px', color: 'var(--p-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {/* Classic dress outline */}
-                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-                  <circle cx="32" cy="20" r="6" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                  <path d="M26 26 Q32 32 38 26" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                  <path d="M20 52 L32 26 L44 52 Z" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                </svg>
-              </div>
               <Text variant="headingMd" as="h3">Dresses</Text>
             </Box>
           </Button>
@@ -659,16 +637,6 @@ export function SizeRecommendation({ shop, host }) {
         <Card sectioned>
           <Button fullWidth onClick={() => handleCategorySelect('Bikini Tops / Bras')}>
             <Box padding="4" alignment="center">
-              <div style={{ width: '90px', height: '90px', marginBottom: '8px', color: 'var(--p-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {/* Classic bra outline */}
-                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-                  <path d="M16 48 Q20 32 32 32 Q44 32 48 48" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                  <ellipse cx="24" cy="44" rx="8" ry="10" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                  <ellipse cx="40" cy="44" rx="8" ry="10" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                  <path d="M16 48 Q32 56 48 48" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                  <path d="M16 32 Q20 24 24 32 M48 32 Q44 24 40 32" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                </svg>
-              </div>
               <Text variant="headingMd" as="h3">Bikini Tops / Bras</Text>
             </Box>
           </Button>
