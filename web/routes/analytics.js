@@ -102,36 +102,58 @@ router.get("/api/analytics", validateAuthenticatedSession, async (req, res) => {
     `, [shop, shop, startDate.toISOString(), shop]);
     
     // Get top products by views (from analytics_events)
-    const productIdExpr = isPostgres
-      ? `(ae.event_data::json ->> 'product_id')`
-      : `json_extract(ae.event_data, '$.product_id')`;
-
-    const topProductsByViews = await db.all(`
-      SELECT 
-        ${productIdExpr} as product_id,
-        (
-          SELECT product_title FROM product_charts pc
-          WHERE pc.product_id = ${productIdExpr}
-          AND pc.shop_domain = ?
-          ORDER BY pc.id DESC
-          LIMIT 1
-        ) as product_title,
-        (
-          SELECT product_handle FROM product_charts pc
-          WHERE pc.product_id = ${productIdExpr}
-          AND pc.shop_domain = ?
-          ORDER BY pc.id DESC
-          LIMIT 1
-        ) as product_handle,
-        COUNT(ae.id) as view_count
-      FROM analytics_events ae
-      WHERE ae.event_type = 'widget_view' 
-        AND ae.created_at >= ? 
-        AND ae.shop = ?
-      GROUP BY ${productIdExpr}
-      ORDER BY view_count DESC
-      LIMIT 10
-    `, [shop, shop, startDate.toISOString(), shop]);
+    let topProductsByViews;
+    if (isPostgres) {
+      topProductsByViews = await db.all(`
+        WITH events AS (
+          SELECT (event_data::json ->> 'product_id') AS product_id
+          FROM analytics_events
+          WHERE event_type = 'widget_view' AND created_at >= ? AND shop = ?
+        )
+        SELECT 
+          e.product_id,
+          (
+            SELECT product_title FROM product_charts pc
+            WHERE pc.product_id = e.product_id AND pc.shop_domain = ?
+            ORDER BY pc.id DESC LIMIT 1
+          ) AS product_title,
+          (
+            SELECT product_handle FROM product_charts pc
+            WHERE pc.product_id = e.product_id AND pc.shop_domain = ?
+            ORDER BY pc.id DESC LIMIT 1
+          ) AS product_handle,
+          COUNT(*) AS view_count
+        FROM events e
+        GROUP BY e.product_id
+        ORDER BY view_count DESC
+        LIMIT 10
+      `, [startDate.toISOString(), shop, shop, shop]);
+    } else {
+      topProductsByViews = await db.all(`
+        WITH events AS (
+          SELECT json_extract(event_data, '$.product_id') AS product_id
+          FROM analytics_events
+          WHERE event_type = 'widget_view' AND created_at >= ? AND shop = ?
+        )
+        SELECT 
+          e.product_id,
+          (
+            SELECT product_title FROM product_charts pc
+            WHERE pc.product_id = e.product_id AND pc.shop_domain = ?
+            ORDER BY pc.id DESC LIMIT 1
+          ) AS product_title,
+          (
+            SELECT product_handle FROM product_charts pc
+            WHERE pc.product_id = e.product_id AND pc.shop_domain = ?
+            ORDER BY pc.id DESC LIMIT 1
+          ) AS product_handle,
+          COUNT(*) AS view_count
+        FROM events e
+        GROUP BY e.product_id
+        ORDER BY view_count DESC
+        LIMIT 10
+      `, [startDate.toISOString(), shop, shop, shop]);
+    }
 
     const analyticsData = {
       totalViews: totalViews || 0,
