@@ -999,43 +999,54 @@
             }
           });
         } else if (isBottomsCategory && hasWaistAndHip) {
-          // For bottoms, use waist as hard cap, hip as tie-breaker
-          chart.sizes.forEach(size => {
-            const [wMin, wMax] = (size.waist || '').split('-').map(v => parseFloat(v.trim()));
-            const [hMin, hMax] = (size.hip || '').split('-').map(v => parseFloat(v.trim()));
-            if (isNaN(wMin) || isNaN(wMax) || isNaN(hMin) || isNaN(hMax)) return;
+          // Rule-based bottoms logic:
+          // 1) Pick sizes that fit waist within ±1" tolerance
+          // 2) Among them, choose the smallest size whose hip max accommodates the user's hip;
+          //    if none do, size up until hips fit.
+          const order = ['XS','S','M','L','XL','XXL'];
+          const waistTol = 1; // inches
+          const hipTol = 0;   // require hips to be within range; adjust if you want forgiveness
 
-            const waist = userMeasurements.waist;
-            const hip = userMeasurements.hip;
+          const sizes = chart.sizes
+            .map(s => ({
+              name: s.size || s.name,
+              w: (s.waist || '').split('-').map(v => parseFloat(v.trim())),
+              h: (s.hip || '').split('-').map(v => parseFloat(v.trim()))
+            }))
+            .filter(s => s.w.length === 2 && s.h.length === 2 && !s.w.some(isNaN) && !s.h.some(isNaN))
+            .sort((a,b) => order.indexOf(a.name) - order.indexOf(b.name));
 
-            // Hard exclude if waist is outside by more than 1 inch
-            if (waist < wMin - 1 || waist > wMax + 1) return;
+          const waist = userMeasurements.waist;
+          const hip = userMeasurements.hip;
 
-            // Base score from waist proximity (inverse distance to center)
-            const wCenter = (wMin + wMax) / 2;
-            const wRange = (wMax - wMin) || 1;
-            const waistScore = Math.max(0, 1 - (Math.abs(waist - wCenter) / (wRange / 2)));
+          // Filter by waist tolerance
+          const waistFit = sizes.filter(s => waist >= (s.w[0] - waistTol) && waist <= (s.w[1] + waistTol));
+          let chosen = null;
 
-            // Hip contributes smaller weight; prefer sizes where hip is inside
-            let hipScore = 0;
-            if (hip >= hMin && hip <= hMax) {
-              // Bonus if hip is also inside
-              const hCenter = (hMin + hMax) / 2;
-              const hRange = (hMax - hMin) || 1;
-              hipScore = 0.3 + 0.2 * Math.max(0, 1 - (Math.abs(hip - hCenter) / (hRange / 2)));
-            } else {
-              // Small penalty when outside
-              const dist = hip < hMin ? (hMin - hip) : (hip - hMax);
-              const tol = Math.max(1, (hMax - hMin) * 0.25);
-              hipScore = Math.max(0, 0.3 - (dist / tol));
+          if (waistFit.length > 0) {
+            // Start from the smallest size that fits waist
+            let idx = 0;
+            // Tighten selection by choosing the one with waist center closest to user's waist
+            waistFit.sort((a,b) => {
+              const ac = (a.w[0]+a.w[1])/2, bc = (b.w[0]+b.w[1])/2;
+              return Math.abs(ac - waist) - Math.abs(bc - waist) || (order.indexOf(a.name)-order.indexOf(b.name));
+            });
+            // Try candidate; if hips too large, size up stepwise
+            let candidate = waistFit[idx];
+            let cIndex = sizes.findIndex(s => s.name === candidate.name);
+            while (cIndex < sizes.length) {
+              const s = sizes[cIndex];
+              const hipFits = hip >= (s.h[0] - hipTol) && hip <= (s.h[1] + hipTol);
+              if (hipFits) { chosen = s; break; }
+              // Size up if hips exceed current hip max; otherwise keep current (prioritize waist)
+              if (hip > (s.h[1] + hipTol)) { cIndex++; } else { chosen = s; break; }
             }
+          }
 
-            const finalScore = (0.8 * waistScore) + (0.2 * hipScore);
-            if (finalScore > bestScore) {
-              bestScore = finalScore;
-              bestSize = size.size || size.name;
-            }
-          });
+          if (chosen) {
+            bestSize = chosen.name;
+            bestScore = 1;
+          }
         } else {
           // Regular size calculation for other products
           chart.sizes.forEach(size => {
