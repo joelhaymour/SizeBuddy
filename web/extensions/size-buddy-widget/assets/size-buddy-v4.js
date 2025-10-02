@@ -290,6 +290,11 @@
     button.addEventListener('click', function() {
       console.log('Button clicked - showing modal directly');
       showModal();
+      // Always reset content and re-fetch when reopening
+      const container = document.getElementById('size-buddy-content');
+      if (container) {
+        container.innerHTML = '<div style="text-align:center;padding:20px;color:#666;">Loading size recommendations...</div>';
+      }
       
       // Load size data directly
       fetchSizeData(productId, shopDomain, contentDiv);

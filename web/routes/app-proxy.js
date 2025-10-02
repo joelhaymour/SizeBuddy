@@ -438,7 +438,10 @@ router.post('/api/proxy/log-recommendation', verifyAppProxySignature, async (req
 
 // Get size chart data for a product (main endpoint for widget)
 router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
-  const { product_id, shop } = req.query;
+  const { product_id } = req.query;
+  // Derive shop from query or headers (Shopify app proxy often omits explicit shop param)
+  const headerHost = req.headers['x-forwarded-host'] || req.headers['x-shopify-shop-domain'];
+  const shop = req.query.shop || (typeof headerHost === 'string' ? headerHost : (Array.isArray(headerHost) ? headerHost[0] : undefined));
   
   console.log('App Proxy size-charts route hit:', {
     path: req.path,
