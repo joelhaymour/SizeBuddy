@@ -950,58 +950,59 @@
         let bestScore = -Infinity;
         let scoreDetails = [];
 
-        // Check if this is a tops category chart with score ranges and we have height and weight
+        // Check if this is a tops category chart and we have height and weight
         const isTopsCategory = chart.category && chart.category.toLowerCase() === 'tops';
         const isBottomsCategory = chart.category && chart.category.toLowerCase() === 'bottoms';
-        const hasScoreRanges = chart.sizes.some(size => size.score && typeof size.score === 'string');
         const hasHeightAndWeight = userMeasurements.height && userMeasurements.weight;
         const hasWaistAndHip = userMeasurements.waist && userMeasurements.hip;
         
-        // Only use score-based sizing for tops category
-        if (isTopsCategory && hasScoreRanges && hasHeightAndWeight) {
-          // Calculate combined score (height + weight)
-          const combinedScore = userMeasurements.height + userMeasurements.weight;
-          console.log(`Calculated combined score for top: ${combinedScore} (height ${userMeasurements.height} in + weight ${userMeasurements.weight} lbs)`);
-          
-          // Find the size that matches the combined score
+        // Tops sizing: use height and weight separately so height has real influence
+        if (isTopsCategory && hasHeightAndWeight) {
+          const heightInches = parseFloat(userMeasurements.height);
+          const weightLbs = parseFloat(userMeasurements.weight);
+
           chart.sizes.forEach(size => {
-            console.log(`Evaluating size ${size.size}:`, size);
-            
-            if (size.score && typeof size.score === 'string' && size.score.includes('-')) {
-              const [minScore, maxScore] = size.score.split('-').map(v => parseFloat(v.trim()));
-              
-              if (!isNaN(minScore) && !isNaN(maxScore)) {
-                let matchScore = 0;
-                let details = '';
-                
-                if (combinedScore >= minScore && combinedScore <= maxScore) {
-                  // Perfect match - score is within the range
-                  matchScore = 1.0;
-                  details = `${combinedScore} is within range ${minScore}-${maxScore}. Perfect match!`;
+            let hScore = 0;
+            let wScore = 0;
+
+            // Height score from range like 5'7"-6'6"
+            if (size.height && typeof size.height === 'string' && size.height.includes('-')) {
+              const [hMinStr, hMaxStr] = size.height.split('-').map(s => s.trim());
+              const hMin = parseHeightValue(hMinStr);
+              const hMax = parseHeightValue(hMaxStr);
+              if (!isNaN(hMin) && !isNaN(hMax)) {
+                const hRange = (hMax - hMin) || 1;
+                if (heightInches >= hMin && heightInches <= hMax) {
+                  hScore = 1.0;
                 } else {
-                  // Calculate how far outside the range
-                  const rangeWidth = maxScore - minScore;
-                  const distanceFromRange = combinedScore < minScore 
-                    ? minScore - combinedScore 
-                    : combinedScore - maxScore;
-                  
-                  // Get a score between 0-1 based on distance (the closer, the higher)
-                  // Using 50% of range width as the tolerance
-                  const tolerance = rangeWidth * 0.5;
-                  matchScore = Math.max(0, 1 - (distanceFromRange / tolerance));
-                  details = `${combinedScore} is outside range ${minScore}-${maxScore}. Score: ${matchScore.toFixed(2)}`;
-                }
-                
-                console.log(`Size ${size.size} score: ${matchScore.toFixed(2)}`);
-                
-                if (matchScore > bestScore) {
-                  bestScore = matchScore;
-                  bestSize = size.size;
-                  scoreDetails = [details];
+                  const dist = heightInches < hMin ? (hMin - heightInches) : (heightInches - hMax);
+                  const tol = hRange * 0.5; // half the range as tolerance
+                  hScore = Math.max(0, 1 - (dist / tol));
                 }
               }
-            } else {
-              console.log(`Size ${size.size} has no valid score range defined`);
+            }
+
+            // Weight score from numeric range like 166-210
+            if (size.weight && typeof size.weight === 'string' && size.weight.includes('-')) {
+              const [wMin, wMax] = size.weight.split('-').map(v => parseFloat(v.trim()));
+              if (!isNaN(wMin) && !isNaN(wMax)) {
+                const wRange = (wMax - wMin) || 1;
+                if (weightLbs >= wMin && weightLbs <= wMax) {
+                  wScore = 1.0;
+                } else {
+                  const dist = weightLbs < wMin ? (wMin - weightLbs) : (weightLbs - wMax);
+                  const tol = wRange * 0.5;
+                  wScore = Math.max(0, 1 - (dist / tol));
+                }
+              }
+            }
+
+            // Height should influence more; weight still matters
+            const matchScore = (0.6 * hScore) + (0.4 * wScore);
+            if (matchScore > bestScore) {
+              bestScore = matchScore;
+              bestSize = size.size || size.name;
+              scoreDetails = [`HeightScore:${hScore.toFixed(2)}`, `WeightScore:${wScore.toFixed(2)}`];
             }
           });
         } else if (isBottomsCategory && hasWaistAndHip) {
