@@ -956,47 +956,70 @@
         const hasHeightAndWeight = userMeasurements.height && userMeasurements.weight;
         const hasWaistAndHip = userMeasurements.waist && userMeasurements.hip;
         
-        // Tops sizing: use height and weight separately so height has real influence
+        // Tops sizing: rule-guided scoring that avoids undersizing near top-of-range
         if (isTopsCategory && hasHeightAndWeight) {
           const heightInches = parseFloat(userMeasurements.height);
           const weightLbs = parseFloat(userMeasurements.weight);
 
+          const order = ['XS','S','M','L','XL','XXL'];
+          const candidates = [];
+
           chart.sizes.forEach(size => {
             let hScore = 0;
             let wScore = 0;
+            let hMin = NaN, hMax = NaN, wMin = NaN, wMax = NaN;
 
             // Height score from range like 5'7"-6'6"
             if (size.height && typeof size.height === 'string' && size.height.includes('-')) {
               const [hMinStr, hMaxStr] = size.height.split('-').map(s => s.trim());
-              const hMin = parseHeightValue(hMinStr);
-              const hMax = parseHeightValue(hMaxStr);
+              hMin = parseHeightValue(hMinStr);
+              hMax = parseHeightValue(hMaxStr);
               if (!isNaN(hMin) && !isNaN(hMax)) {
                 const half = ((hMax - hMin) || 1) / 2;
                 const center = (hMin + hMax) / 2;
-                hScore = Math.max(0, 1 - (Math.abs(heightInches - center) / half));
+                const base = Math.max(0, 1 - (Math.abs(heightInches - center) / half));
+                const inside = heightInches >= hMin && heightInches <= hMax;
+                hScore = inside ? (0.6 + 0.4 * base) : base * 0.5; // keep decent score inside, small if outside
               }
             }
 
             // Weight score from numeric range like 166-210
             if (size.weight && typeof size.weight === 'string' && size.weight.includes('-')) {
-              const [wMin, wMax] = size.weight.split('-').map(v => parseFloat(v.trim()));
+              [wMin, wMax] = size.weight.split('-').map(v => parseFloat(v.trim()));
               if (!isNaN(wMin) && !isNaN(wMax)) {
                 const half = ((wMax - wMin) || 1) / 2;
                 const center = (wMin + wMax) / 2;
-                wScore = Math.max(0, 1 - (Math.abs(weightLbs - center) / half));
+                const base = Math.max(0, 1 - (Math.abs(weightLbs - center) / half));
+                const inside = weightLbs >= wMin && weightLbs <= wMax;
+                wScore = inside ? (0.6 + 0.4 * base) : base * 0.5;
               }
             }
 
-            // Height should influence more; weight still matters
-            // Bias toward sizing up at upper edges: add small bonus if either score is near boundary (>0.9)
-            const edgeBonus = (hScore > 0.9 || wScore > 0.9) ? 0.05 : 0;
-            const matchScore = Math.min(1, (0.6 * hScore) + (0.4 * wScore) + edgeBonus);
-            if (matchScore > bestScore) {
-              bestScore = matchScore;
-              bestSize = size.size || size.name;
-              scoreDetails = [`HeightScore:${hScore.toFixed(2)}`, `WeightScore:${wScore.toFixed(2)}`];
-            }
+            const nearUpperWeight = !isNaN(wMin) && !isNaN(wMax) && weightLbs >= (wMin + 0.8 * (wMax - wMin));
+            const nearUpperHeight = !isNaN(hMin) && !isNaN(hMax) && heightInches >= (hMin + 0.8 * (hMax - hMin));
+
+            const matchScore = Math.min(1, (0.55 * hScore) + (0.45 * wScore) + (nearUpperWeight ? 0.08 : 0) + (nearUpperHeight ? 0.03 : 0));
+            candidates.push({
+              name: size.size || size.name,
+              score: matchScore,
+              wMin, wMax, hMin, hMax,
+              nearUpperWeight
+            });
           });
+
+          // Choose the best, but prefer sizing up when scores are close and weight is at the top of range
+          if (candidates.length) {
+            candidates.sort((a,b) => b.score - a.score || order.indexOf(a.name) - order.indexOf(b.name));
+            const topScore = candidates[0].score;
+            const close = candidates.filter(c => c.score >= topScore - 0.02);
+            const withUpper = close.filter(c => c.nearUpperWeight);
+            const pickFrom = withUpper.length ? withUpper : close;
+            // among close ones, prefer larger size
+            pickFrom.sort((a,b) => order.indexOf(a.name) - order.indexOf(b.name));
+            const chosen = pickFrom[pickFrom.length - 1];
+            bestSize = chosen.name;
+            bestScore = chosen.score;
+          }
         } else if (isBottomsCategory && hasWaistAndHip) {
           // Rule-based bottoms logic:
           // 1) Pick sizes that fit waist within ±1" tolerance
