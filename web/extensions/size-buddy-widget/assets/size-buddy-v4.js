@@ -971,14 +971,9 @@
               const hMin = parseHeightValue(hMinStr);
               const hMax = parseHeightValue(hMaxStr);
               if (!isNaN(hMin) && !isNaN(hMax)) {
-                const hRange = (hMax - hMin) || 1;
-                if (heightInches >= hMin && heightInches <= hMax) {
-                  hScore = 1.0;
-                } else {
-                  const dist = heightInches < hMin ? (hMin - heightInches) : (heightInches - hMax);
-                  const tol = hRange * 0.5; // half the range as tolerance
-                  hScore = Math.max(0, 1 - (dist / tol));
-                }
+                const half = ((hMax - hMin) || 1) / 2;
+                const center = (hMin + hMax) / 2;
+                hScore = Math.max(0, 1 - (Math.abs(heightInches - center) / half));
               }
             }
 
@@ -986,19 +981,16 @@
             if (size.weight && typeof size.weight === 'string' && size.weight.includes('-')) {
               const [wMin, wMax] = size.weight.split('-').map(v => parseFloat(v.trim()));
               if (!isNaN(wMin) && !isNaN(wMax)) {
-                const wRange = (wMax - wMin) || 1;
-                if (weightLbs >= wMin && weightLbs <= wMax) {
-                  wScore = 1.0;
-                } else {
-                  const dist = weightLbs < wMin ? (wMin - weightLbs) : (weightLbs - wMax);
-                  const tol = wRange * 0.5;
-                  wScore = Math.max(0, 1 - (dist / tol));
-                }
+                const half = ((wMax - wMin) || 1) / 2;
+                const center = (wMin + wMax) / 2;
+                wScore = Math.max(0, 1 - (Math.abs(weightLbs - center) / half));
               }
             }
 
             // Height should influence more; weight still matters
-            const matchScore = (0.6 * hScore) + (0.4 * wScore);
+            // Bias toward sizing up at upper edges: add small bonus if either score is near boundary (>0.9)
+            const edgeBonus = (hScore > 0.9 || wScore > 0.9) ? 0.05 : 0;
+            const matchScore = Math.min(1, (0.6 * hScore) + (0.4 * wScore) + edgeBonus);
             if (matchScore > bestScore) {
               bestScore = matchScore;
               bestSize = size.size || size.name;
