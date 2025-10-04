@@ -880,11 +880,12 @@
           });
         });
         
-        // Add event listener for calculate button
-        // Ensure event listeners are only attached once
-        if (!window.sizeBuddyEventListenersAttached) {
-          window.sizeBuddyEventListenersAttached = true;
-          document.getElementById('size-buddy-get-recommendation').addEventListener('click', function() {
+        // Add event listener for calculate button (attach per render)
+        const calcBtn = document.getElementById('size-buddy-get-recommendation');
+        if (calcBtn) {
+          calcBtn.replaceWith(calcBtn.cloneNode(true));
+          const freshBtn = document.getElementById('size-buddy-get-recommendation');
+          freshBtn.addEventListener('click', function() {
             calculateSize(chart, measurements);
           });
         }
