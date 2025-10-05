@@ -99,6 +99,12 @@ export default function HomePage() {
             selected: selectedTab === 1,
             onClick: () => setSelectedTab(1),
           },
+          {
+            label: 'Plans',
+            icon: EditMinor,
+            selected: selectedTab === 2,
+            onClick: () => setSelectedTab(2),
+          },
         ]}
       />
     </Navigation>
