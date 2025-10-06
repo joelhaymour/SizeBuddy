@@ -15,6 +15,7 @@ export default {
     callbackUrl: "/api/webhooks",
     callback: async (topic, shop, body, webhookId) => {
       const payload = JSON.parse(body);
+      console.log("GDPR CUSTOMERS_DATA_REQUEST", { shop, webhookId, payload });
       // Payload has the following shape:
       // {
       //   "shop_id": 954889,
@@ -47,6 +48,7 @@ export default {
     callbackUrl: "/api/webhooks",
     callback: async (topic, shop, body, webhookId) => {
       const payload = JSON.parse(body);
+      console.log("GDPR CUSTOMERS_REDACT", { shop, webhookId, payload });
       // Payload has the following shape:
       // {
       //   "shop_id": 954889,
@@ -76,6 +78,7 @@ export default {
     callbackUrl: "/api/webhooks",
     callback: async (topic, shop, body, webhookId) => {
       const payload = JSON.parse(body);
+      console.log("GDPR SHOP_REDACT", { shop, webhookId, payload });
       // Payload has the following shape:
       // {
       //   "shop_id": 954889,
