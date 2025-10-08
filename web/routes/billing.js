@@ -47,11 +47,11 @@ router.get('/api/billing/status', validateAuthenticatedSession, async (req, res)
 });
 
 // Create or redirect to a subscription approval URL
-router.get('/api/billing/redirect', validateAuthenticatedSession, async (req, res) => {
+router.get('/api/billing/redirect', async (req, res) => {
   try {
-    const session = res.locals?.shopify?.session || {};
     // Resolve shop robustly from session, query, headers, or referer
-    let resolvedShop = session.shop || req.query.shop || req.headers['x-shopify-shop-domain'];
+    const sessionFromMiddleware = res.locals?.shopify?.session || {};
+    let resolvedShop = sessionFromMiddleware.shop || req.query.shop || req.headers['x-shopify-shop-domain'];
     if (!resolvedShop && req.get('referer')) {
       try { const u = new URL(req.get('referer')); const qs = new URLSearchParams(u.search); resolvedShop = qs.get('shop') || resolvedShop; } catch {}
     }
@@ -95,7 +95,7 @@ router.get('/api/billing/redirect', validateAuthenticatedSession, async (req, re
       [resolvedShop, planName, 'pending_approval']
     );
     // Ensure we have a session with an access token (fallback to offline session by shop)
-    let sessionForAdmin = session && session.accessToken ? session : null;
+    let sessionForAdmin = sessionFromMiddleware && sessionFromMiddleware.accessToken ? sessionFromMiddleware : null;
     if (!sessionForAdmin) {
       try {
         const sessions = await shopify.sessionStorage.findSessionsByShop(resolvedShop);
