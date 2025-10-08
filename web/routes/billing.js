@@ -49,7 +49,14 @@ router.get('/api/billing/status', validateAuthenticatedSession, async (req, res)
 // Create or redirect to a subscription approval URL
 router.get('/api/billing/redirect', validateAuthenticatedSession, async (req, res) => {
   try {
-    const session = res.locals.shopify.session;
+    const session = res.locals?.shopify?.session || {};
+    // Resolve shop robustly from session, query, headers, or referer
+    let resolvedShop = session.shop || req.query.shop || req.headers['x-shopify-shop-domain'];
+    if (!resolvedShop && req.get('referer')) {
+      try { const u = new URL(req.get('referer')); const qs = new URLSearchParams(u.search); resolvedShop = qs.get('shop') || resolvedShop; } catch {}
+    }
+    if (!resolvedShop) return res.status(401).json({ error: 'No session' });
+
     const planName = (req.query.plan || 'Pro').toString();
     const returnUrl = `${process.env.HOST}`; // after approval, Shopify redirects back here
     const mutation = `#graphql
@@ -72,7 +79,7 @@ router.get('/api/billing/redirect', validateAuthenticatedSession, async (req, re
            plan = EXCLUDED.plan,
            status = EXCLUDED.status,
            updated_at = CURRENT_TIMESTAMP`,
-        [session.shop, 'Free', 'active', null]
+        [resolvedShop, 'Free', 'active', null]
       );
       return res.redirect(`${process.env.HOST}`);
     }
@@ -85,7 +92,7 @@ router.get('/api/billing/redirect', validateAuthenticatedSession, async (req, re
          plan = EXCLUDED.plan,
          status = EXCLUDED.status,
          updated_at = CURRENT_TIMESTAMP`,
-      [session.shop, planName, 'pending_approval']
+      [resolvedShop, planName, 'pending_approval']
     );
     const resp = await withShopifyRateLimit(() => shopify.api.clients.graphql.request({
       session,
