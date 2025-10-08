@@ -41,8 +41,13 @@ const STATIC_PATH =
 
 const app = express();
 
-// Parse JSON request bodies for all endpoints
-app.use(express.json());
+// Parse JSON for all endpoints EXCEPT the Shopify webhook path (raw body required)
+app.use((req, res, next) => {
+  if (req.path === (shopify.config?.webhooks?.path || '/api/webhooks')) {
+    return next();
+  }
+  return express.json()(req, res, next);
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
