@@ -94,9 +94,18 @@ router.get('/api/billing/redirect', validateAuthenticatedSession, async (req, re
          updated_at = CURRENT_TIMESTAMP`,
       [resolvedShop, planName, 'pending_approval']
     );
-    const resp = await withShopifyRateLimit(() => shopify.api.clients.graphql.request({
-      session,
-      data: { query: mutation, variables: { name: `${planName} plan`, returnUrl, lineItems: [{ plan: { appRecurringPricingDetails: { interval: 'EVERY_30_DAYS', price: { amount, currencyCode: 'USD' } } } }] } }
+    const gqlClient = new shopify.api.clients.Graphql({ session });
+    const resp = await withShopifyRateLimit(() => gqlClient.request({
+      data: {
+        query: mutation,
+        variables: {
+          name: `${planName} plan`,
+          returnUrl,
+          lineItems: [
+            { plan: { appRecurringPricingDetails: { interval: 'EVERY_30_DAYS', price: { amount, currencyCode: 'USD' } } } }
+          ]
+        }
+      }
     }));
     const url = resp?.body?.data?.appSubscriptionCreate?.confirmationUrl;
     if (!url) return res.status(500).json({ error: 'No confirmation url', resp });
