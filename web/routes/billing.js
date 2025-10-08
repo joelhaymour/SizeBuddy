@@ -94,7 +94,18 @@ router.get('/api/billing/redirect', validateAuthenticatedSession, async (req, re
          updated_at = CURRENT_TIMESTAMP`,
       [resolvedShop, planName, 'pending_approval']
     );
-    const gqlClient = new shopify.api.clients.Graphql({ session });
+    // Ensure we have a session with an access token (fallback to offline session by shop)
+    let sessionForAdmin = session && session.accessToken ? session : null;
+    if (!sessionForAdmin) {
+      try {
+        const sessions = await shopify.sessionStorage.findSessionsByShop(resolvedShop);
+        sessionForAdmin = (sessions || []).find(s => s && s.accessToken) || null;
+      } catch {}
+    }
+    if (!sessionForAdmin) {
+      return res.status(401).json({ error: 'No session token for admin API' });
+    }
+    const gqlClient = new shopify.api.clients.Graphql({ session: sessionForAdmin });
     const resp = await withShopifyRateLimit(() => gqlClient.request({
       data: {
         query: mutation,
