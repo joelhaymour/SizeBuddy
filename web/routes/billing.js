@@ -65,15 +65,27 @@ router.get('/api/billing/redirect', validateAuthenticatedSession, async (req, re
     const amount = planName === 'Free' ? 0 : planName === 'Premium' ? 24.99 : 12.99;
     if (amount === 0) {
       const db = await getDb();
-      await db.run('INSERT OR REPLACE INTO subscriptions (shop, plan, status, subscription_id, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)', [session.shop, 'Free', 'active', null]);
+      await db.run(
+        `INSERT INTO subscriptions (shop, plan, status, subscription_id, updated_at)
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(shop) DO UPDATE SET
+           plan = EXCLUDED.plan,
+           status = EXCLUDED.status,
+           updated_at = CURRENT_TIMESTAMP`,
+        [session.shop, 'Free', 'active', null]
+      );
       return res.redirect(`${process.env.HOST}`);
     }
     // Persist the merchant's intended plan as pending approval before redirecting
     const db = await getDb();
     await db.run(
-      `INSERT OR REPLACE INTO subscriptions (shop, plan, status, subscription_id, updated_at)
-       VALUES (?, ?, ?, COALESCE((SELECT subscription_id FROM subscriptions WHERE shop = ?), NULL), CURRENT_TIMESTAMP)`,
-      [session.shop, planName, 'pending_approval', session.shop]
+      `INSERT INTO subscriptions (shop, plan, status, updated_at)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(shop) DO UPDATE SET
+         plan = EXCLUDED.plan,
+         status = EXCLUDED.status,
+         updated_at = CURRENT_TIMESTAMP`,
+      [session.shop, planName, 'pending_approval']
     );
     const resp = await withShopifyRateLimit(() => shopify.api.clients.graphql.request({
       session,
