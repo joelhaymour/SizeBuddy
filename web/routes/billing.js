@@ -47,7 +47,8 @@ router.get('/api/billing/status', validateAuthenticatedSession, async (req, res)
 });
 
 // Create or redirect to a subscription approval URL
-router.get('/api/billing/redirect', async (req, res) => {
+// POST returns JSON {url} for embedded navigation; GET performs a 302 redirect as fallback
+router.post('/api/billing/redirect', async (req, res) => {
   try {
     // Resolve shop robustly from session, query, headers, or referer
     const sessionFromMiddleware = res.locals?.shopify?.session || {};
@@ -120,9 +121,27 @@ router.get('/api/billing/redirect', async (req, res) => {
     }));
     const url = resp?.body?.data?.appSubscriptionCreate?.confirmationUrl;
     if (!url) return res.status(500).json({ error: 'No confirmation url', resp });
-    return res.redirect(url);
+    return res.json({ url });
   } catch (e) {
     console.error('Billing redirect error:', e);
+    return res.status(500).json({ error: 'Billing redirect failed' });
+  }
+});
+
+router.get('/api/billing/redirect', async (req, res) => {
+  // Delegate to POST logic then perform 302 to the URL, for non-embedded fallbacks
+  try {
+    req.method = 'POST';
+    const fakeRes = {
+      status: (code) => ({ json: (body) => res.status(code).json(body) }),
+      json: (body) => {
+        if (body && body.url) return res.redirect(body.url);
+        return res.status(500).json({ error: 'Billing redirect failed' });
+      }
+    };
+    return router.handle(req, fakeRes);
+  } catch (e) {
+    console.error('Billing redirect (GET) error:', e);
     return res.status(500).json({ error: 'Billing redirect failed' });
   }
 });

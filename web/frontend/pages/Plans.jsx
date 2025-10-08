@@ -1,8 +1,10 @@
 import { Card, Page, Layout, Text, Button, LegacyCard, Box, Banner } from "@shopify/polaris";
 import { useEffect, useState } from 'react';
+import { useAuthenticatedFetch } from "@shopify/app-bridge-react";
 
 export default function Plans() {
   const [status, setStatus] = useState(null);
+  const fetch = useAuthenticatedFetch();
   useEffect(() => {
     fetch('/api/billing/status').then(r => r.json()).then(setStatus).catch(()=>{});
   }, []);
@@ -11,8 +13,26 @@ export default function Plans() {
     { name: 'Pro', price: '$12.99', desc: '4 size charts', plan: 'Pro' },
     { name: 'Premium', price: '$24.99', desc: 'Unlimited charts', plan: 'Premium' },
   ];
-  const onSelect = (plan) => {
-    window.location.href = `/api/billing/redirect?plan=${encodeURIComponent(plan)}`;
+  const onSelect = async (plan) => {
+    try {
+      const resp = await fetch(`/api/billing/redirect?plan=${encodeURIComponent(plan)}`, { method: 'POST' });
+      if (resp.status === 401) {
+        // kick back to auth to re-establish session
+        const params = new URLSearchParams(window.location.search);
+        const shop = params.get('shop');
+        if (shop) window.location.href = `/api/auth?shop=${encodeURIComponent(shop)}`;
+        return;
+      }
+      const data = await resp.json().catch(() => null);
+      if (data && data.url) {
+        window.top.location.href = data.url;
+      } else {
+        // Fallback to server redirect by navigating directly (GET)
+        window.location.href = `/api/billing/redirect?plan=${encodeURIComponent(plan)}`;
+      }
+    } catch (e) {
+      console.error('Plan select failed:', e);
+    }
   };
   return (
     <Page title="Plans">
