@@ -1,10 +1,12 @@
 import { Card, Page, Layout, Text, Button, LegacyCard, Box, Banner } from "@shopify/polaris";
 import { useEffect, useState } from 'react';
-import { useAuthenticatedFetch } from "@shopify/app-bridge-react";
+import { useAuthenticatedFetch, useAppBridge } from "@shopify/app-bridge-react";
+import { Redirect } from '@shopify/app-bridge/actions';
 
 export default function Plans() {
   const [status, setStatus] = useState(null);
   const fetch = useAuthenticatedFetch();
+  const app = useAppBridge();
   useEffect(() => {
     fetch('/api/billing/status').then(r => r.json()).then(setStatus).catch(()=>{});
   }, []);
@@ -25,7 +27,13 @@ export default function Plans() {
       }
       const data = await resp.json().catch(() => null);
       if (data && data.url) {
-        window.top.location.href = data.url;
+        try {
+          const redirect = Redirect.create(app);
+          redirect.dispatch(Redirect.Action.REMOTE, data.url);
+        } catch {
+          // Fallback
+          window.top.location.href = data.url;
+        }
       } else {
         // Fallback to server redirect by navigating directly (GET)
         window.location.href = `/api/billing/redirect?plan=${encodeURIComponent(plan)}`;

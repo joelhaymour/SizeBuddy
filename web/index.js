@@ -769,7 +769,9 @@ app.use((req, res, next) => {
     `style-src ${sources}${unsafeInline}`,
     `script-src ${sources}${unsafeEval} blob:`,
     `connect-src ${sources} wss://*`,
+    // allow the app to open Shopify accounts/billing in top window
     `frame-ancestors https://admin.shopify.com https://*.myshopify.com`,
+    `frame-src https://admin.shopify.com https://*.myshopify.com https://accounts.shopify.com https://*.shopify.com`,
   ].join('; ');
 
   res.setHeader('Content-Security-Policy', csp);
