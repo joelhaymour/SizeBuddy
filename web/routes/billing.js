@@ -104,6 +104,11 @@ router.post('/api/billing/redirect', async (req, res) => {
       } catch {}
     }
     if (!sessionForAdmin) {
+      // Signal App Bridge to reauthorize
+      if (resolvedShop) {
+        res.setHeader('X-Shopify-API-Request-Failure-Reauthorize', '1');
+        res.setHeader('X-Shopify-API-Request-Failure-Reauthorize-Url', `/api/auth?shop=${encodeURIComponent(resolvedShop)}`);
+      }
       return res.status(401).json({ error: 'No session token for admin API' });
     }
     const gqlClient = new shopify.api.clients.Graphql({ session: sessionForAdmin });

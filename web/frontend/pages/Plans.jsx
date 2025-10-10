@@ -19,6 +19,14 @@ export default function Plans() {
     try {
       const resp = await fetch(`/api/billing/redirect?plan=${encodeURIComponent(plan)}`, { method: 'POST' });
       if (resp.status === 401) {
+        const reauthUrl = resp.headers.get('X-Shopify-API-Request-Failure-Reauthorize-Url');
+        if (reauthUrl) {
+          const redirect = Redirect.create(app);
+          redirect.dispatch(Redirect.Action.REMOTE, reauthUrl);
+          return;
+        }
+      }
+      if (resp.status === 401) {
         // kick back to auth to re-establish session
         const params = new URLSearchParams(window.location.search);
         const shop = params.get('shop');
