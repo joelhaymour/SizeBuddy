@@ -7,6 +7,7 @@ export default function Plans() {
   const [status, setStatus] = useState(null);
   const fetch = useAuthenticatedFetch();
   const app = useAppBridge();
+  const APP_HANDLE = 'size-buddy-v6-testing';
   useEffect(() => {
     fetch('/api/billing/status').then(r => r.json()).then(setStatus).catch(()=>{});
   }, []);
@@ -15,39 +16,13 @@ export default function Plans() {
     { name: 'Pro', price: '$12.99', desc: '4 size charts', plan: 'Pro' },
     { name: 'Premium', price: '$24.99', desc: 'Unlimited charts', plan: 'Premium' },
   ];
-  const onSelect = async (plan) => {
+  const onSelect = async (_plan) => {
     try {
-      const resp = await fetch(`/api/billing/redirect?plan=${encodeURIComponent(plan)}`, { method: 'POST' });
-      if (resp.status === 401) {
-        const reauthUrl = resp.headers.get('X-Shopify-API-Request-Failure-Reauthorize-Url');
-        if (reauthUrl) {
-          const redirect = Redirect.create(app);
-          redirect.dispatch(Redirect.Action.REMOTE, reauthUrl);
-          return;
-        }
-      }
-      if (resp.status === 401) {
-        // kick back to auth to re-establish session
-        const params = new URLSearchParams(window.location.search);
-        const shop = params.get('shop');
-        if (shop) window.location.href = `/api/auth?shop=${encodeURIComponent(shop)}`;
-        return;
-      }
-      const data = await resp.json().catch(() => null);
-      if (data && data.url) {
-        try {
-          const redirect = Redirect.create(app);
-          redirect.dispatch(Redirect.Action.REMOTE, data.url);
-        } catch {
-          // Fallback
-          window.top.location.href = data.url;
-        }
-      } else {
-        // Fallback to server redirect by navigating directly (GET)
-        window.location.href = `/api/billing/redirect?plan=${encodeURIComponent(plan)}`;
-      }
+      const redirect = Redirect.create(app);
+      // Managed pricing plan selection page hosted by Shopify
+      redirect.dispatch(Redirect.Action.ADMIN_PATH, `/charges/${APP_HANDLE}/pricing_plans`);
     } catch (e) {
-      console.error('Plan select failed:', e);
+      console.error('Redirect to pricing plans failed:', e);
     }
   };
   return (

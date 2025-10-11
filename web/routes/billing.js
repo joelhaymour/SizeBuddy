@@ -47,7 +47,17 @@ router.get('/api/billing/status', validateAuthenticatedSession, async (req, res)
 });
 
 // Create or redirect to a subscription approval URL
-// POST returns JSON {url} for embedded navigation; GET performs a 302 redirect as fallback
+// Managed pricing is now used; keep endpoint for backward compat but instruct client to use Admin path
+router.post('/api/billing/redirect', async (req, res) => {
+  return res.status(410).json({ error: 'Managed pricing enabled. Use /charges/:app_handle/pricing_plans in Admin.' });
+});
+
+router.get('/api/billing/redirect', async (req, res) => {
+  return res.status(410).json({ error: 'Managed pricing enabled. Use /charges/:app_handle/pricing_plans in Admin.' });
+});
+
+/*
+// Previous manual billing flow (kept for reference if switching back):
 router.post('/api/billing/redirect', async (req, res) => {
   try {
     // Resolve shop robustly from session, query, headers, or referer
@@ -150,6 +160,7 @@ router.get('/api/billing/redirect', async (req, res) => {
     return res.status(500).json({ error: 'Billing redirect failed' });
   }
 });
+*/
 
 export default router;
 
