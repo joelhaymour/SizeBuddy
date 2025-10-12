@@ -16,7 +16,12 @@ export default function Plans() {
             <Box paddingBlockStart="3"/>
             <Button primary onClick={() => {
               const redirect = Redirect.create(app);
-              redirect.dispatch(Redirect.Action.ADMIN_PATH, `/charges/${APP_HANDLE}/pricing_plans`);
+              // Open Shopify's plan page in a new admin tab so the app stays open
+              redirect.dispatch(
+                Redirect.Action.ADMIN_PATH,
+                `/charges/${APP_HANDLE}/pricing_plans`,
+                { newContext: true }
+              );
             }}>Manage plan</Button>
           </LegacyCard>
         </Layout.Section>
