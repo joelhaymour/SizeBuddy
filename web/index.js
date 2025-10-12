@@ -957,6 +957,14 @@ async function initializeDatabase() {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )`);
 
+      // Backfill: ensure legacy databases have the locked column
+      try {
+        await db.run(`ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE`);
+        await db.run(`UPDATE size_charts SET locked = FALSE WHERE locked IS NULL`);
+      } catch (e) {
+        console.warn('Skipping locked column backfill (may already exist):', e.message || e);
+      }
+
       await db.run(`CREATE TABLE IF NOT EXISTS product_charts (
         id SERIAL PRIMARY KEY,
         chart_id INTEGER NOT NULL REFERENCES size_charts(id) ON DELETE CASCADE,
