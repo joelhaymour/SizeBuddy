@@ -165,12 +165,12 @@ router.post('/api/size-recommendations', async (req, res) => {
     // Ensure subscription row exists (default Free)
     const db = req.app.locals.db || await getDb();
     await db.run('INSERT INTO subscriptions (shop, plan, status, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(shop) DO NOTHING', [resolvedShop, 'Free', 'active']);
-    // Enforce plan limits (Free: 2, Pro: 4, Premium: unlimited)
+    // Enforce plan limits (Free: 2, Pro: 5, Premium: unlimited)
     const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [resolvedShop]);
     const plan = (sub?.plan || 'Free');
     const existingCountRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [resolvedShop]);
     const cnt = existingCountRow?.cnt || 0;
-    const limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 4 : 2);
+    const limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
     if (cnt >= limit) {
       return res.status(403).json({ error: `Plan limit reached. Your plan (${plan}) allows ${plan === 'Premium' ? 'unlimited' : limit} charts.` });
     }
