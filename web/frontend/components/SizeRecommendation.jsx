@@ -25,6 +25,7 @@ import {
   RangeSlider
 } from "@shopify/polaris";
 import { ResourcePicker } from "@shopify/app-bridge-react";
+import { Redirect } from '@shopify/app-bridge/actions';
 import {
   CircleTickMajor,
   CirclePlusMajor,
@@ -57,6 +58,8 @@ export function SizeRecommendation({ shop, host }) {
   const isMounted = useRef(true);
   const [editingRecommendationId, setEditingRecommendationId] = useState(null);
   const [limitBanner, setLimitBanner] = useState(false);
+  const [billingStatus, setBillingStatus] = useState(null);
+  const [overLimit, setOverLimit] = useState(false);
 
   // Add custom styles for the modal
   useEffect(() => {
@@ -139,12 +142,27 @@ export function SizeRecommendation({ shop, host }) {
     }
   }, [fetch, shop]);
 
+  const fetchBillingStatus = useCallback(async () => {
+    try {
+      const response = await fetch('/api/billing/status');
+      if (!response.ok) return;
+      const data = await response.json();
+      setBillingStatus(data);
+      const limit = data?.usage?.planLimit;
+      const unlocked = data?.usage?.unlockedCharts || 0;
+      setOverLimit(limit !== null && typeof limit === 'number' && unlocked > limit);
+    } catch (e) {
+      // ignore
+    }
+  }, [fetch]);
+
   useEffect(() => {
     fetchSizeRecommendations();
+    fetchBillingStatus();
     return () => {
       isMounted.current = false;
     };
-  }, [fetchSizeRecommendations]);
+  }, [fetchSizeRecommendations, fetchBillingStatus]);
 
   const handleModalOpen = () => {
     console.log('Opening modal');
@@ -561,6 +579,7 @@ export function SizeRecommendation({ shop, host }) {
       setShowToast(true);
       handleModalClose();
       fetchSizeRecommendations();
+      fetchBillingStatus();
     } catch (error) {
       console.error('Error saving size recommendation:', error);
       setToastProps({
@@ -1287,6 +1306,30 @@ export function SizeRecommendation({ shop, host }) {
 
   return (
     <>
+      {overLimit && (
+        <Box padding="4">
+          <Banner
+            status="critical"
+            title="You’re over your plan’s size chart limit"
+            action={{
+              content: 'Manage plan',
+              onAction: () => {
+                const redirect = Redirect.create(app);
+                const APP_HANDLE = 'size-buddy-v6-testing';
+                redirect.dispatch(
+                  Redirect.Action.ADMIN_PATH,
+                  `/charges/${APP_HANDLE}/pricing_plans`,
+                  { newContext: true }
+                );
+              }
+            }}
+          >
+            <p>
+              You currently have {billingStatus?.usage?.unlockedCharts || 0} size charts active, but your plan allows {billingStatus?.usage?.planLimit ?? 'unlimited'}. Extra charts will lock at the start of your next billing period. Delete extras or upgrade to keep them active.
+            </p>
+          </Banner>
+        </Box>
+      )}
       <Modal
         open={isModalOpen}
         onClose={handleModalClose}

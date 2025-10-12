@@ -36,10 +36,15 @@ router.get('/api/billing/status', validateAuthenticatedSession, async (req, res)
   try {
     const session = res.locals.shopify.session;
     const db = await getDb();
-    const sub = await db.get('SELECT plan, status, subscription_id FROM subscriptions WHERE shop = ?', [session.shop]);
-    const countRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [session.shop]);
-    const cnt = countRow?.cnt || 0;
-    res.json({ plan: sub?.plan || 'Free', status: sub?.status || 'active', usage: { charts: cnt } });
+    const sub = await db.get('SELECT plan, status FROM subscriptions WHERE shop = ?', [session.shop]);
+    const plan = sub?.plan || 'Free';
+    const status = sub?.status || 'active';
+    const totalRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [session.shop]);
+    const unlockedRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked, 0) = 0', [session.shop]);
+    const totalCharts = totalRow?.cnt || 0;
+    const unlockedCharts = unlockedRow?.cnt || 0;
+    const planLimit = plan === 'Premium' ? null : (plan === 'Pro' ? 5 : 2);
+    res.json({ plan, status, usage: { totalCharts, unlockedCharts, planLimit } });
   } catch (e) {
     console.error('billing/status error:', e);
     res.status(500).json({ error: 'failed' });
