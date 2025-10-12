@@ -37,8 +37,31 @@ router.get('/api/billing/status', validateAuthenticatedSession, async (req, res)
     const session = res.locals.shopify.session;
     const db = await getDb();
     const sub = await db.get('SELECT plan, status FROM subscriptions WHERE shop = ?', [session.shop]);
-    const plan = sub?.plan || 'Free';
-    const status = sub?.status || 'active';
+    let plan = sub?.plan || 'Free';
+    let status = sub?.status || 'active';
+
+    // Try to detect the current Shopify-managed plan and reconcile immediately
+    try {
+      const gql = new shopify.api.clients.Graphql({ session });
+      const query = `#graphql
+        query AppInstallPlan { currentAppInstallation { activeSubscriptions { name status } } }
+      `;
+      const resp = await gql.request(query);
+      const subs = resp?.body?.data?.currentAppInstallation?.activeSubscriptions || [];
+      const name = (subs[0]?.name || '').toString();
+      const n = name.toLowerCase();
+      const shopifyPlan = n.includes('premium') ? 'Premium' : n.includes('pro') ? 'Pro' : (name ? 'Free' : null);
+      if (shopifyPlan && shopifyPlan !== plan) {
+        plan = shopifyPlan;
+        status = 'active';
+        await db.run(
+          `INSERT INTO subscriptions (shop, plan, status, updated_at)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(shop) DO UPDATE SET plan = EXCLUDED.plan, status = EXCLUDED.status, updated_at = CURRENT_TIMESTAMP`,
+          [session.shop, plan, status]
+        );
+      }
+    } catch (_) { /* ignore Shopify lookup errors */ }
     const totalRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [session.shop]);
     let unlockedCharts = 0;
     try {
@@ -56,6 +79,29 @@ router.get('/api/billing/status', validateAuthenticatedSession, async (req, res)
     }
     const totalCharts = totalRow?.cnt || 0;
     const planLimit = plan === 'Premium' ? null : (plan === 'Pro' ? 5 : 2);
+
+    // If plan was downgraded and we have more unlocked than allowed, lock immediately (newest first)
+    if (planLimit !== null && typeof planLimit === 'number' && unlockedCharts > planLimit) {
+      try {
+        // Unlock all first, then lock overflow newest first
+        await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [session.shop]);
+        await db.run(
+          `UPDATE size_charts
+           SET locked = 1
+           WHERE shop_domain = ? AND id IN (
+             SELECT id FROM size_charts
+             WHERE shop_domain = ?
+             ORDER BY created_at DESC, id DESC
+             LIMIT (SELECT MAX(0, COUNT(*) - ?) FROM size_charts WHERE shop_domain = ?)
+           )`,
+          [session.shop, session.shop, planLimit, session.shop]
+        );
+        const unlockedRow2 = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked, 0) = 0', [session.shop]);
+        unlockedCharts = unlockedRow2?.cnt || planLimit;
+      } catch (e) {
+        console.warn('Immediate lock reconciliation failed:', e.message || e);
+      }
+    }
     res.json({ plan, status, usage: { totalCharts, unlockedCharts, planLimit } });
   } catch (e) {
     console.error('billing/status error:', e);
