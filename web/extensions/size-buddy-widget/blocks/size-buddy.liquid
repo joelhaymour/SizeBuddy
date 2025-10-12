@@ -27,6 +27,12 @@
       "default": "inline"
     },
     {
+      "type": "color",
+      "id": "button_color",
+      "label": "Find My Size button color",
+      "default": "#4A90E2"
+    },
+    {
       "type": "text",
       "id": "button_text",
       "label": "Button Text",
@@ -55,6 +61,7 @@
   data-product-id="{{ product.id }}"
   data-product-title="{{ product.title }}"
   data-product-handle="{{ product.handle }}"
+  data-button-color="{{ block.settings.button_color }}"
   data-button-text="{{ block.settings.button_text }}"
   data-modal-title="{{ block.settings.modal_title }}"
   data-modal-description="{{ block.settings.modal_description }}"

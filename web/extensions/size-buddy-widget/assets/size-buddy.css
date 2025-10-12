@@ -52,7 +52,7 @@
   display: inline-block;
   margin-top: 10px;
   padding: 8px 16px;
-  background-color: #4a90e2;
+  background-color: var(--sb-primary, #4a90e2);
   color: white;
   border: none;
   border-radius: 4px;
@@ -62,7 +62,7 @@
 }
 
 .size-buddy-button:hover {
-  background-color: #3a80d2;
+  background-color: color-mix(in srgb, var(--sb-primary, #4a90e2) 85%, #000);
 }
 
 .size-buddy-result {

@@ -14,6 +14,7 @@
     // Get data attributes
     const productId = widget.getAttribute('data-product-id');
     const shopDomain = widget.getAttribute('data-shop-domain');
+    const buttonColor = widget.getAttribute('data-button-color');
     
     console.log('Size Buddy: Widget attributes found:', { 
       productId, 
@@ -24,7 +25,7 @@
     const button = document.createElement('button');
     button.id = 'size-buddy-toggle-btn';
     button.textContent = 'Find My Size';  // Changed from 'Find Your Perfect Size' to 'Find My Size'
-    button.style.backgroundColor = '#4A90E2';
+    button.style.backgroundColor = buttonColor || '#4A90E2';
     button.style.color = 'white';
     button.style.padding = '12px 20px';
     button.style.border = 'none';
@@ -39,13 +40,13 @@
     
     // Add hover effects via mouseover/mouseout
     button.addEventListener('mouseover', function() {
-      this.style.backgroundColor = '#3A7BC8';
+      this.style.backgroundColor = buttonColor || '#3A7BC8';
       this.style.transform = 'translateY(-1px)';
       this.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
     });
     
     button.addEventListener('mouseout', function() {
-      this.style.backgroundColor = '#4A90E2';
+      this.style.backgroundColor = buttonColor || '#4A90E2';
       this.style.transform = 'translateY(0)';
       this.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
     });
@@ -1101,7 +1102,7 @@
                   return [Math.min(minI, maxI), Math.max(minI, maxI)];
                 };
                 const u = toIndex(String(userValue));
-                if (typeof sizeValue === 'string' && sizeValue.includes('-')) {
+              if (typeof sizeValue === 'string' && sizeValue.includes('-')) {
                   const cr = parseCupRange(sizeValue);
                   if (cr && u !== null) {
                     const [minI, maxI] = cr;
@@ -1205,7 +1206,7 @@
             }
           }
         }
-
+        
         // Improved logic for Bikini Tops / Bras
         if (chart.category && chart.category === 'Bikini Tops / Bras' && userMeasurements.band_size && userMeasurements.cup_size) {
           let bestScore = -Infinity;
