@@ -60,6 +60,7 @@ export function SizeRecommendation({ shop, host }) {
   const [limitBanner, setLimitBanner] = useState(false);
   const [billingStatus, setBillingStatus] = useState(null);
   const [overLimit, setOverLimit] = useState(false);
+  const [hasLocked, setHasLocked] = useState(false);
 
   // Add custom styles for the modal
   useEffect(() => {
@@ -129,7 +130,13 @@ export function SizeRecommendation({ shop, host }) {
       
       const data = await response.json();
       console.log('Received data:', data);
-      if (isMounted.current) setSizeRecommendations(data);
+      const sorted = Array.isArray(data)
+        ? [...data].sort((a, b) => (Number(a.locked || 0) - Number(b.locked || 0)))
+        : [];
+      if (isMounted.current) {
+        setSizeRecommendations(sorted);
+        setHasLocked(sorted.some((r) => !!r.locked));
+      }
     } catch (error) {
       console.error('Error fetching size recommendations:', error);
       setToastProps({
@@ -158,11 +165,10 @@ export function SizeRecommendation({ shop, host }) {
 
   useEffect(() => {
     fetchSizeRecommendations();
-    fetchBillingStatus();
     return () => {
       isMounted.current = false;
     };
-  }, [fetchSizeRecommendations, fetchBillingStatus]);
+  }, [fetchSizeRecommendations]);
 
   const handleModalOpen = () => {
     console.log('Opening modal');
@@ -1306,11 +1312,11 @@ export function SizeRecommendation({ shop, host }) {
 
   return (
     <>
-      {overLimit && (
+      {hasLocked && (
         <Box padding="4">
           <Banner
-            status="critical"
-            title="You’re over your plan’s size chart limit"
+            status="info"
+            title="Some newer charts are locked"
             action={{
               content: 'Manage plan',
               onAction: () => {
@@ -1325,7 +1331,7 @@ export function SizeRecommendation({ shop, host }) {
             }}
           >
             <p>
-              You currently have {billingStatus?.usage?.unlockedCharts || 0} size charts active, but your plan allows {billingStatus?.usage?.planLimit ?? 'unlimited'}. Extra charts will lock at the start of your next billing period. Delete extras or upgrade to keep them active.
+              Upgrade your plan or delete locked charts to free a slot. Locked charts are marked and cannot be edited.
             </p>
           </Banner>
         </Box>
@@ -1435,19 +1441,20 @@ export function SizeRecommendation({ shop, host }) {
                     renderItem={(item) => (
                       <ResourceItem id={item.id}>
                         <LegacyStack distribution="equalSpacing" alignment="center">
-                          <LegacyStack vertical>
+                  <LegacyStack vertical>
                             <Text variant="bodyMd" as="h3" fontWeight="bold">
                               {item.name}
                             </Text>
-                            <LegacyStack>
-                              <Badge status="info">{item.category}</Badge>
-                              <Badge status="success">{item.fit_type} Fit</Badge>
-                            </LegacyStack>
+                    <LegacyStack>
+                      <Badge status="info">{item.category}</Badge>
+                      <Badge status="success">{item.fit_type} Fit</Badge>
+                      {item.locked ? <Badge status="attention">Locked</Badge> : null}
+                    </LegacyStack>
                           </LegacyStack>
-                          <ButtonGroup>
-                            <Button onClick={() => handleEdit(item)}>Edit</Button>
-                            <Button destructive onClick={() => handleDelete(item.id)}>Delete</Button>
-                          </ButtonGroup>
+                  <ButtonGroup>
+                    <Button onClick={() => handleEdit(item)} disabled={!!item.locked}>Edit</Button>
+                    <Button destructive onClick={() => handleDelete(item.id)}>Delete</Button>
+                  </ButtonGroup>
                         </LegacyStack>
                       </ResourceItem>
                     )}
