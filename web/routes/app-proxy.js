@@ -97,9 +97,9 @@ router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req
 
     console.log(`Found chart ID ${productChart.chart_id} for product ${productId}`);
 
-    // Get the size chart
-    const sizeChart = await req.app.locals.db.get(
-      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ?`,
+  // Get the size chart (must not be locked)
+  const sizeChart = await req.app.locals.db.get(
+      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
       [productChart.chart_id, shop]
     );
 
@@ -475,7 +475,7 @@ router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
     
     // Get the chart details
     const chart = await req.app.locals.db.get(
-      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ?`,
+      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
       [productChart.chart_id, shop]
     );
     

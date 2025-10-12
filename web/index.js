@@ -952,6 +952,7 @@ async function initializeDatabase() {
         fit_type TEXT NOT NULL,
         chart_data TEXT NOT NULL,
         optional_measurements TEXT,
+        locked BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )`);
@@ -1041,6 +1042,7 @@ async function initializeDatabase() {
       fit_type TEXT NOT NULL,
       chart_data TEXT NOT NULL,
       optional_measurements TEXT,
+      locked INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );

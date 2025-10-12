@@ -42,6 +42,32 @@ const CustomWebhookHandlers = {
            )`,
           [shop, inferredPlan, shop, status, id]
         );
+
+        // Reconcile lock state on plan change
+        const planRow = await db.get(`SELECT plan FROM subscriptions WHERE shop = ?`, [shop]);
+        const plan = (planRow?.plan || 'Free');
+        const limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
+
+        if (limit === Infinity) {
+          // Unlock any locked charts on upgrade to Premium
+          await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [shop]);
+        } else {
+          // Lock newest charts so only the oldest up to limit remain unlocked
+          // 1) Unlock all first (in case of upgrade to Pro)
+          await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [shop]);
+          // 2) Lock overflow (newest first)
+          await db.run(
+            `UPDATE size_charts
+             SET locked = 1
+             WHERE shop_domain = ? AND id IN (
+               SELECT id FROM size_charts
+               WHERE shop_domain = ?
+               ORDER BY created_at DESC, id DESC
+               LIMIT (SELECT MAX(0, COUNT(*) - ?) FROM size_charts WHERE shop_domain = ?)
+             )`,
+            [shop, shop, limit, shop]
+          );
+        }
       } catch (e) {
         console.error('APP_SUBSCRIPTIONS_UPDATE handler error:', e);
       }
