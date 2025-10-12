@@ -40,13 +40,60 @@ router.get('/api/billing/status', validateAuthenticatedSession, async (req, res)
     const plan = sub?.plan || 'Free';
     const status = sub?.status || 'active';
     const totalRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [session.shop]);
-    const unlockedRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked, 0) = 0', [session.shop]);
+    let unlockedCharts = 0;
+    try {
+      // Ensure locked column exists on legacy DBs
+      if (process.env.DATABASE_URL) {
+        await db.run('ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE');
+      } else {
+        await db.run('ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS locked INTEGER DEFAULT 0');
+      }
+      const unlockedRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked, 0) = 0', [session.shop]);
+      unlockedCharts = unlockedRow?.cnt || 0;
+    } catch (_) {
+      // Fallback if locked doesn't exist yet
+      unlockedCharts = totalRow?.cnt || 0;
+    }
     const totalCharts = totalRow?.cnt || 0;
-    const unlockedCharts = unlockedRow?.cnt || 0;
     const planLimit = plan === 'Premium' ? null : (plan === 'Pro' ? 5 : 2);
     res.json({ plan, status, usage: { totalCharts, unlockedCharts, planLimit } });
   } catch (e) {
     console.error('billing/status error:', e);
+    res.status(500).json({ error: 'failed' });
+  }
+});
+
+// Optional: detect Shopify-managed pricing selection (pending plan changes)
+router.get('/api/billing/pending-status', validateAuthenticatedSession, async (req, res) => {
+  try {
+    const session = res.locals.shopify.session;
+    const gql = new shopify.api.clients.Graphql({ session });
+    const query = `#graphql
+      query AppInstallPlan {
+        currentAppInstallation {
+          activeSubscriptions { name status }
+        }
+      }
+    `;
+    let shopifyPlan = null;
+    try {
+      const resp = await gql.request(query);
+      const subs = resp?.body?.data?.currentAppInstallation?.activeSubscriptions || [];
+      const name = (subs[0]?.name || '').toString();
+      const n = name.toLowerCase();
+      if (n.includes('premium')) shopifyPlan = 'Premium';
+      else if (n.includes('pro')) shopifyPlan = 'Pro';
+      else if (name) shopifyPlan = 'Free';
+    } catch (_) {}
+
+    const db = await getDb();
+    const row = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [session.shop]);
+    const storedPlan = row?.plan || 'Free';
+    const limitFor = (p) => (p === 'Premium' ? Infinity : (p === 'Pro' ? 5 : 2));
+    const limits = { stored: limitFor(storedPlan), prospective: shopifyPlan ? limitFor(shopifyPlan) : null };
+    res.json({ storedPlan, shopifyPlan, limits });
+  } catch (e) {
+    console.error('pending-status error:', e);
     res.status(500).json({ error: 'failed' });
   }
 });
