@@ -164,10 +164,13 @@ export function SizeRecommendation({ shop, host }) {
   }, [fetch]);
 
   useEffect(() => {
-    fetchSizeRecommendations();
-    return () => {
-      isMounted.current = false;
-    };
+    (async () => {
+      // Trigger plan reconciliation and immediate locking on the server
+      try { await fetch('/api/billing/status'); } catch (_) {}
+      // Then load charts (now reflecting any locks)
+      await fetchSizeRecommendations();
+    })();
+    return () => { isMounted.current = false; };
   }, [fetchSizeRecommendations]);
 
   const handleModalOpen = () => {
