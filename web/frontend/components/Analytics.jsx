@@ -217,9 +217,6 @@ export function Analytics({ shop, host }) {
           <Text variant="headingMd" as="h3">
             Top Products by Recommendations
           </Text>
-          <Box paddingBlockStart="2">
-            <PButton onClick={() => handleUpgrade('Pro')}>Upgrade to Pro</PButton>
-          </Box>
           <Box paddingBlockStart="4">
             {renderTopProductsByRecommendations()}
           </Box>
