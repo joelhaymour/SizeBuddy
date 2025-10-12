@@ -15,6 +15,7 @@
     const productId = widget.getAttribute('data-product-id');
     const shopDomain = widget.getAttribute('data-shop-domain');
     const buttonColor = widget.getAttribute('data-button-color');
+    const buttonTextColor = widget.getAttribute('data-button-text-color');
     
     console.log('Size Buddy: Widget attributes found:', { 
       productId, 
@@ -26,7 +27,19 @@
     button.id = 'size-buddy-toggle-btn';
     button.textContent = 'Find My Size';  // Changed from 'Find Your Perfect Size' to 'Find My Size'
     button.style.backgroundColor = buttonColor || '#4A90E2';
-    button.style.color = 'white';
+    // Determine text color: theme setting or contrast fallback
+    const autoText = (() => {
+      if (!buttonColor) return '#FFFFFF';
+      try {
+        const hex = buttonColor.replace('#','');
+        const r = parseInt(hex.substring(0,2), 16);
+        const g = parseInt(hex.substring(2,4), 16);
+        const b = parseInt(hex.substring(4,6), 16);
+        const yiq = (r*299 + g*587 + b*114) / 1000;
+        return yiq >= 128 ? '#000000' : '#FFFFFF';
+      } catch { return '#FFFFFF'; }
+    })();
+    button.style.color = buttonTextColor || autoText;
     button.style.padding = '12px 20px';
     button.style.border = 'none';
     button.style.borderRadius = '6px';

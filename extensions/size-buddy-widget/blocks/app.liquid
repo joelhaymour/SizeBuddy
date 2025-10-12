@@ -1,4 +1,4 @@
-<div class="size-buddy-widget" id="size-buddy-widget" data-product-id="{{ product.id }}" data-shop-domain="{{ shop.permanent_domain }}" data-button-color="{{ block.settings.button_color }}">
+<div class="size-buddy-widget" id="size-buddy-widget" data-product-id="{{ product.id }}" data-shop-domain="{{ shop.permanent_domain }}" data-button-color="{{ block.settings.button_color }}" data-button-text-color="{{ block.settings.button_text_color }}">
   <button class="size-buddy-button">Size Buddy</button>
   <div class="size-buddy-content"></div>
 </div>
@@ -51,6 +51,12 @@
       "id": "button_color",
       "label": "Find My Size button color",
       "default": "#4A90E2"
+    },
+    {
+      "type": "color",
+      "id": "button_text_color",
+      "label": "Find My Size text color",
+      "default": "#FFFFFF"
     }
   ]
 }
