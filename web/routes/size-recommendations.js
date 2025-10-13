@@ -28,27 +28,20 @@ router.get('/api/size-recommendations', async (req, res) => {
     return res.status(400).json({ error: "Missing shop parameter" });
   }
 
-  console.log(`Fetching size recommendations for shop: ${shop}`);
-
   try {
     // Reconcile locking based on current stored plan before returning the list
     const db = req.app.locals.db || await getDb();
-    console.log(`[LOCK RECONCILE] Starting for shop: ${shop}`);
     const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]);
     const plan = (sub?.plan || 'Free');
     const planLimit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
-    console.log(`[LOCK RECONCILE] Current plan: ${plan}, limit: ${planLimit}`);
     
     // Always reconcile: reset all locks to match current plan limit
     const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
-    const lockedVal = process.env.DATABASE_URL ? 'TRUE' : '1';
     
     if (planLimit !== Infinity) {
       // Reset all to unlocked, then lock oldest beyond limit
-      console.log(`[LOCK RECONCILE] Unlocking all charts for ${shop}...`);
       await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
       
-      console.log(`[LOCK RECONCILE] Locking oldest charts beyond limit ${planLimit}...`);
       if (process.env.DATABASE_URL) {
         await db.run(
           `UPDATE size_charts SET locked = TRUE
@@ -72,12 +65,8 @@ router.get('/api/size-recommendations', async (req, res) => {
           [shop, shop, planLimit]
         );
       }
-      
-      const afterCount = await db.get(`SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND (locked IS NULL OR locked = ${unlockedVal})`, [shop]);
-      console.log(`[LOCK RECONCILE] Done. Unlocked charts: ${afterCount?.cnt || 0}`);
     } else {
       // Premium: unlock all
-      console.log(`[LOCK RECONCILE] Premium plan: unlocking all charts for ${shop}`);
       await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
     }
 

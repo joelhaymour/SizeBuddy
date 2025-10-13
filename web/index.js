@@ -805,16 +805,18 @@ app.options('*', (req, res) => {
   res.status(204).end();
 });
 
-// Debug middleware
-app.use((req, res, next) => {
-  console.log('Request Details:', {
-    method: req.method,
-    path: req.path,
-    query: req.query,
-    headers: req.headers
+// Debug middleware (development only)
+if (process.env.NODE_ENV === 'development') {
+  app.use((req, res, next) => {
+    console.log('Request Details:', {
+      method: req.method,
+      path: req.path,
+      query: req.query,
+      headers: req.headers
+    });
+    next();
   });
-  next();
-});
+}
 
 // Development mode: proxy requests to Vite dev server
 if (process.env.NODE_ENV === "development") {
