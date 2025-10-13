@@ -65,6 +65,9 @@ router.get('/api/size-recommendations', async (req, res) => {
       [shop]
     );
 
+    console.log(`Returning ${recommendations.length} charts for ${shop}:`);
+    recommendations.forEach(r => console.log(`  - ${r.name} (ID: ${r.id}): locked=${r.locked}`));
+
     // For each recommendation, get the associated products
     for (const recommendation of recommendations) {
       try {
