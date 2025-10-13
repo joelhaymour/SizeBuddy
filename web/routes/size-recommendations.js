@@ -32,47 +32,53 @@ router.get('/api/size-recommendations', async (req, res) => {
 
   try {
     // Reconcile locking based on current stored plan before returning the list
-    try {
-      const db = req.app.locals.db || await getDb();
-      const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]);
-      const plan = (sub?.plan || 'Free');
-      const planLimit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
-      // Always reconcile: reset all locks to match current plan limit
-      const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
-      const lockedVal = process.env.DATABASE_URL ? 'TRUE' : '1';
+    const db = req.app.locals.db || await getDb();
+    console.log(`[LOCK RECONCILE] Starting for shop: ${shop}`);
+    const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]);
+    const plan = (sub?.plan || 'Free');
+    const planLimit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
+    console.log(`[LOCK RECONCILE] Current plan: ${plan}, limit: ${planLimit}`);
+    
+    // Always reconcile: reset all locks to match current plan limit
+    const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
+    const lockedVal = process.env.DATABASE_URL ? 'TRUE' : '1';
+    
+    if (planLimit !== Infinity) {
+      // Reset all to unlocked, then lock oldest beyond limit
+      console.log(`[LOCK RECONCILE] Unlocking all charts for ${shop}...`);
+      await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
       
-      if (planLimit !== Infinity) {
-        // Reset all to unlocked, then lock oldest beyond limit
-        await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
-        if (process.env.DATABASE_URL) {
-          await db.run(
-            `UPDATE size_charts SET locked = TRUE
-             WHERE shop_domain = ? AND id NOT IN (
-               SELECT id FROM size_charts
-               WHERE shop_domain = ?
-               ORDER BY created_at DESC, id DESC
-               LIMIT ?
-             )`,
-            [shop, shop, planLimit]
-          );
-        } else {
-          await db.run(
-            `UPDATE size_charts SET locked = 1
-             WHERE shop_domain = ? AND id NOT IN (
-               SELECT id FROM size_charts
-               WHERE shop_domain = ?
-               ORDER BY created_at DESC, id DESC
-               LIMIT ?
-             )`,
-            [shop, shop, planLimit]
-          );
-        }
+      console.log(`[LOCK RECONCILE] Locking oldest charts beyond limit ${planLimit}...`);
+      if (process.env.DATABASE_URL) {
+        await db.run(
+          `UPDATE size_charts SET locked = TRUE
+           WHERE shop_domain = ? AND id NOT IN (
+             SELECT id FROM size_charts
+             WHERE shop_domain = ?
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?
+           )`,
+          [shop, shop, planLimit]
+        );
       } else {
-        // Premium: unlock all
-        await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
+        await db.run(
+          `UPDATE size_charts SET locked = 1
+           WHERE shop_domain = ? AND id NOT IN (
+             SELECT id FROM size_charts
+             WHERE shop_domain = ?
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?
+           )`,
+          [shop, shop, planLimit]
+        );
       }
-    } catch (e) {
-      console.warn('Lock reconciliation (GET list) skipped:', e.message || e);
+      
+      const afterCount = await db.get(`SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND (locked IS NULL OR locked = ${unlockedVal})`, [shop]);
+      console.log(`[LOCK RECONCILE] Done. Unlocked charts: ${afterCount?.cnt || 0}`);
+    } else {
+      // Premium: unlock all
+      console.log(`[LOCK RECONCILE] Premium plan: unlocking all charts for ${shop}`);
+      await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
     }
 
     res.set('Cache-Control', 'no-store');
