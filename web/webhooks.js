@@ -50,14 +50,16 @@ const CustomWebhookHandlers = {
         const limit = newPlan === 'Premium' ? Infinity : (newPlan === 'Pro' ? 5 : 2);
         
         if (limit !== Infinity) {
-          // Count current unlocked charts
-          const countRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked,0) = 0', [shop]);
+          // Count current unlocked charts (use FALSE for Postgres, 0 for SQLite)
+          const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
+          const countRow = await db.get(`SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`, [shop]);
           const unlocked = countRow?.cnt || 0;
           
           if (unlocked > limit) {
             console.log(`Downgrade detected for ${shop}: ${newPlan} allows ${limit}, currently ${unlocked} unlocked. Locking excess.`);
             // Reset all to unlocked first, then lock oldest to enforce limit
-            await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [shop]);
+            const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
+            await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
             // Lock all except the N most recent (keep newest unlocked)
             if (process.env.DATABASE_URL) {
               // Postgres
@@ -89,7 +91,8 @@ const CustomWebhookHandlers = {
         } else {
           // Premium: unlock all
           console.log(`Upgrade to Premium for ${shop}: unlocking all charts.`);
-          await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [shop]);
+          const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
+          await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
         }
       } catch (e) {
         console.error('APP_SUBSCRIPTIONS_UPDATE handler error:', e);

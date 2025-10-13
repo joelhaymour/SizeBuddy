@@ -169,8 +169,9 @@ router.post('/api/size-recommendations', async (req, res) => {
     // Enforce plan limits (Free: 2, Pro: 5, Premium: unlimited)
     const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [resolvedShop]);
     const plan = (sub?.plan || 'Free');
-    // Count only unlocked charts
-    const existingCountRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked,0) = 0', [resolvedShop]);
+    // Count only unlocked charts (use FALSE for Postgres, 0 for SQLite)
+    const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
+    const existingCountRow = await db.get(`SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`, [resolvedShop]);
     const cnt = existingCountRow?.cnt || 0;
     const limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
     if (cnt >= limit) {

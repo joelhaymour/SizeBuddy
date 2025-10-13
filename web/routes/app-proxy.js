@@ -98,8 +98,9 @@ router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req
     console.log(`Found chart ID ${productChart.chart_id} for product ${productId}`);
 
     // Get the size chart (skip locked charts)
+    const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
     const sizeChart = await req.app.locals.db.get(
-      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
+      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`,
       [productChart.chart_id, shop]
     );
 
@@ -167,8 +168,9 @@ router.post('/api/proxy/get-size-recommendation', verifyAppProxySignature, async
 
   try {
     // Get the size chart (skip locked charts)
+    const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
     const sizeChart = await req.app.locals.db.get(
-      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
+      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`,
       [chartId, shop]
     );
 
@@ -474,8 +476,9 @@ router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
     }
     
     // Get the chart details (skip locked charts)
+    const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
     const chart = await req.app.locals.db.get(
-      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
+      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`,
       [productChart.chart_id, shop]
     );
     

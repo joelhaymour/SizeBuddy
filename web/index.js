@@ -425,8 +425,9 @@ app.get('/public/size-charts', async (req, res) => {
       return res.json({ found: false, error: 'No size chart found for this product' });
     }
 
+    const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
     const chart = await db.get(
-      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
+      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`,
       [productChart.chart_id, shop]
     );
 
