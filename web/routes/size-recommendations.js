@@ -37,40 +37,38 @@ router.get('/api/size-recommendations', async (req, res) => {
       const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]);
       const plan = (sub?.plan || 'Free');
       const planLimit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
+      // Always reconcile: reset all locks to match current plan limit
+      const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
+      const lockedVal = process.env.DATABASE_URL ? 'TRUE' : '1';
+      
       if (planLimit !== Infinity) {
-        const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
-        const unlockedRow = await db.get(`SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`, [shop]);
-        const unlocked = unlockedRow?.cnt || 0;
-        if (unlocked > planLimit) {
-          const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
-          await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
-          if (process.env.DATABASE_URL) {
-            await db.run(
-              `UPDATE size_charts SET locked = TRUE
-               WHERE shop_domain = ? AND id NOT IN (
-                 SELECT id FROM size_charts
-                 WHERE shop_domain = ?
-                 ORDER BY created_at DESC, id DESC
-                 LIMIT ?
-               )`,
-              [shop, shop, planLimit]
-            );
-          } else {
-            await db.run(
-              `UPDATE size_charts SET locked = 1
-               WHERE shop_domain = ? AND id NOT IN (
-                 SELECT id FROM size_charts
-                 WHERE shop_domain = ?
-                 ORDER BY created_at DESC, id DESC
-                 LIMIT ?
-               )`,
-              [shop, shop, planLimit]
-            );
-          }
+        // Reset all to unlocked, then lock oldest beyond limit
+        await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
+        if (process.env.DATABASE_URL) {
+          await db.run(
+            `UPDATE size_charts SET locked = TRUE
+             WHERE shop_domain = ? AND id NOT IN (
+               SELECT id FROM size_charts
+               WHERE shop_domain = ?
+               ORDER BY created_at DESC, id DESC
+               LIMIT ?
+             )`,
+            [shop, shop, planLimit]
+          );
+        } else {
+          await db.run(
+            `UPDATE size_charts SET locked = 1
+             WHERE shop_domain = ? AND id NOT IN (
+               SELECT id FROM size_charts
+               WHERE shop_domain = ?
+               ORDER BY created_at DESC, id DESC
+               LIMIT ?
+             )`,
+            [shop, shop, planLimit]
+          );
         }
       } else {
         // Premium: unlock all
-        const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
         await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
       }
     } catch (e) {
