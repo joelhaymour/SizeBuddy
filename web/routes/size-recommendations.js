@@ -31,42 +31,12 @@ router.get('/api/size-recommendations', async (req, res) => {
   console.log(`Fetching size recommendations for shop: ${shop}`);
 
   try {
-    // Reconcile locking based on current stored plan before returning the list
-    try {
-      const db = req.app.locals.db || await getDb();
-      const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]);
-      const plan = (sub?.plan || 'Free');
-      const planLimit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
-      if (planLimit !== Infinity) {
-        const unlockedRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked,0) = 0', [shop]);
-        const unlocked = unlockedRow?.cnt || 0;
-        if (unlocked > planLimit) {
-          await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [shop]);
-          await db.run(
-            `UPDATE size_charts
-             SET locked = 1
-             WHERE shop_domain = ? AND id IN (
-               SELECT id FROM size_charts
-               WHERE shop_domain = ?
-               ORDER BY created_at DESC, id DESC
-               LIMIT (SELECT MAX(0, COUNT(*) - ?) FROM size_charts WHERE shop_domain = ?)
-             )`,
-            [shop, shop, planLimit, shop]
-          );
-        }
-      }
-    } catch (e) {
-      console.warn('Lock reconciliation (GET list) skipped:', e.message || e);
-    }
-
     res.set('Cache-Control', 'no-store');
+    // Return all charts including locked ones; frontend can show locked status
     const recommendations = await req.app.locals.db.all(
       `SELECT * FROM size_charts WHERE shop_domain = ? ORDER BY created_at DESC`,
       [shop]
     );
-
-    console.log(`Returning ${recommendations.length} charts for ${shop}:`);
-    recommendations.forEach(r => console.log(`  - ${r.name} (ID: ${r.id}): locked=${r.locked}`));
 
     // For each recommendation, get the associated products
     for (const recommendation of recommendations) {
@@ -199,24 +169,9 @@ router.post('/api/size-recommendations', async (req, res) => {
     // Enforce plan limits (Free: 2, Pro: 5, Premium: unlimited)
     const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [resolvedShop]);
     const plan = (sub?.plan || 'Free');
-    // Ensure locked column exists, and be resilient if missing on legacy DBs
-    try {
-      if (process.env.DATABASE_URL) {
-        await db.run('ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE');
-      } else {
-        await db.run('ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS locked INTEGER DEFAULT 0');
-      }
-    } catch (_) { /* ignore */ }
-
-    let cnt = 0;
-    try {
-      const existingCountRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked,0) = 0', [resolvedShop]);
-      cnt = existingCountRow?.cnt || 0;
-    } catch (e) {
-      // If locked column doesn't exist yet, fall back to total count
-      const totalRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [resolvedShop]);
-      cnt = totalRow?.cnt || 0;
-    }
+    // Count only unlocked charts
+    const existingCountRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked,0) = 0', [resolvedShop]);
+    const cnt = existingCountRow?.cnt || 0;
     const limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
     if (cnt >= limit) {
       return res.status(403).json({ error: `Plan limit reached. Your plan (${plan}) allows ${plan === 'Premium' ? 'unlimited' : limit} charts.` });

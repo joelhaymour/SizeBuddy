@@ -94,6 +94,16 @@ async function runMigrations() {
       console.log('Optional measurements column already exists in size_charts table.');
     }
 
+    // Add locked column to size_charts for plan limit enforcement
+    const lockedExists = sizeChartsInfo.some(column => column.name === 'locked');
+    if (!lockedExists) {
+      console.log('Adding locked column to size_charts table...');
+      await db.run(`ALTER TABLE size_charts ADD COLUMN locked INTEGER DEFAULT 0;`);
+      console.log('Locked column added successfully.');
+    } else {
+      console.log('Locked column already exists in size_charts table.');
+    }
+
     console.log('Migrations completed successfully.');
   } catch (error) {
     console.error('Error running migrations:', error);

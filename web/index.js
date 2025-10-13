@@ -426,7 +426,7 @@ app.get('/public/size-charts', async (req, res) => {
     }
 
     const chart = await db.get(
-      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ?`,
+      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
       [productChart.chart_id, shop]
     );
 
@@ -956,14 +956,6 @@ async function initializeDatabase() {
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )`);
-
-      // Backfill: ensure legacy databases have the locked column
-      try {
-        await db.run(`ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE`);
-        await db.run(`UPDATE size_charts SET locked = FALSE WHERE locked IS NULL`);
-      } catch (e) {
-        console.warn('Skipping locked column backfill (may already exist):', e.message || e);
-      }
 
       await db.run(`CREATE TABLE IF NOT EXISTS product_charts (
         id SERIAL PRIMARY KEY,

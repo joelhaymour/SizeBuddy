@@ -31,42 +31,65 @@ const CustomWebhookHandlers = {
         // Try to infer plan name from line items or name if present
         const inferredPlan = sub?.name || sub?.line_items?.[0]?.plan?.name || null;
         const db = await getDb();
+        
+        // Upsert subscription (Postgres-compatible)
         await db.run(
-          `INSERT OR REPLACE INTO subscriptions (shop, plan, status, subscription_id, updated_at)
-           VALUES (
-             ?,
-             COALESCE(?, (SELECT plan FROM subscriptions WHERE shop = ?), 'Pro'),
-             ?,
-             ?,
-             CURRENT_TIMESTAMP
-           )`,
-          [shop, inferredPlan, shop, status, id]
+          `INSERT INTO subscriptions (shop, plan, status, subscription_id, updated_at)
+           VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(shop) DO UPDATE SET
+             plan = COALESCE(EXCLUDED.plan, subscriptions.plan),
+             status = EXCLUDED.status,
+             subscription_id = EXCLUDED.subscription_id,
+             updated_at = CURRENT_TIMESTAMP`,
+          [shop, inferredPlan, status, id]
         );
 
-        // Reconcile lock state on plan change
-        const planRow = await db.get(`SELECT plan FROM subscriptions WHERE shop = ?`, [shop]);
-        const plan = (planRow?.plan || 'Free');
-        const limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
-
-        if (limit === Infinity) {
-          // Unlock any locked charts on upgrade to Premium
-          await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [shop]);
+        // Immediately lock excess charts on downgrade
+        const planRow = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]);
+        const newPlan = planRow?.plan || 'Free';
+        const limit = newPlan === 'Premium' ? Infinity : (newPlan === 'Pro' ? 5 : 2);
+        
+        if (limit !== Infinity) {
+          // Count current unlocked charts
+          const countRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked,0) = 0', [shop]);
+          const unlocked = countRow?.cnt || 0;
+          
+          if (unlocked > limit) {
+            console.log(`Downgrade detected for ${shop}: ${newPlan} allows ${limit}, currently ${unlocked} unlocked. Locking excess.`);
+            // Reset all to unlocked first, then lock oldest to enforce limit
+            await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [shop]);
+            // Lock all except the N most recent (keep newest unlocked)
+            if (process.env.DATABASE_URL) {
+              // Postgres
+              await db.run(
+                `UPDATE size_charts SET locked = TRUE 
+                 WHERE shop_domain = ? AND id NOT IN (
+                   SELECT id FROM size_charts 
+                   WHERE shop_domain = ? 
+                   ORDER BY created_at DESC, id DESC 
+                   LIMIT ?
+                 )`,
+                [shop, shop, limit]
+              );
+            } else {
+              // SQLite
+              await db.run(
+                `UPDATE size_charts SET locked = 1 
+                 WHERE shop_domain = ? AND id NOT IN (
+                   SELECT id FROM size_charts 
+                   WHERE shop_domain = ? 
+                   ORDER BY created_at DESC, id DESC 
+                   LIMIT ?
+                 )`,
+                [shop, shop, limit]
+              );
+            }
+            console.log(`Locked excess charts for ${shop}.`);
+          }
         } else {
-          // Lock newest charts so only the oldest up to limit remain unlocked
-          // 1) Unlock all first (in case of upgrade to Pro)
+          // Premium: unlock all
+          console.log(`Upgrade to Premium for ${shop}: unlocking all charts.`);
           await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [shop]);
-          // 2) Lock overflow (newest first)
-          await db.run(
-            `UPDATE size_charts
-             SET locked = 1
-             WHERE shop_domain = ? AND id IN (
-               SELECT id FROM size_charts
-               WHERE shop_domain = ?
-               ORDER BY created_at DESC, id DESC
-               LIMIT (SELECT MAX(0, COUNT(*) - ?) FROM size_charts WHERE shop_domain = ?)
-             )`,
-            [shop, shop, limit, shop]
-          );
         }
       } catch (e) {
         console.error('APP_SUBSCRIPTIONS_UPDATE handler error:', e);

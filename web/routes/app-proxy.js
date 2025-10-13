@@ -97,8 +97,8 @@ router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req
 
     console.log(`Found chart ID ${productChart.chart_id} for product ${productId}`);
 
-  // Get the size chart (must not be locked)
-  const sizeChart = await req.app.locals.db.get(
+    // Get the size chart (skip locked charts)
+    const sizeChart = await req.app.locals.db.get(
       `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
       [productChart.chart_id, shop]
     );
@@ -166,9 +166,9 @@ router.post('/api/proxy/get-size-recommendation', verifyAppProxySignature, async
   }
 
   try {
-    // Get the size chart
+    // Get the size chart (skip locked charts)
     const sizeChart = await req.app.locals.db.get(
-      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ?`,
+      `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
       [chartId, shop]
     );
 
@@ -473,7 +473,7 @@ router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
       return res.json({ found: false, error: 'No size chart found for this product' });
     }
     
-    // Get the chart details
+    // Get the chart details (skip locked charts)
     const chart = await req.app.locals.db.get(
       `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND COALESCE(locked,0) = 0`,
       [productChart.chart_id, shop]
