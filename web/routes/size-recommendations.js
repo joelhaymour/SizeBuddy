@@ -31,6 +31,34 @@ router.get('/api/size-recommendations', async (req, res) => {
   console.log(`Fetching size recommendations for shop: ${shop}`);
 
   try {
+    // Reconcile locking based on current stored plan before returning the list
+    try {
+      const db = req.app.locals.db || await getDb();
+      const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]);
+      const plan = (sub?.plan || 'Free');
+      const planLimit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
+      if (planLimit !== Infinity) {
+        const unlockedRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked,0) = 0', [shop]);
+        const unlocked = unlockedRow?.cnt || 0;
+        if (unlocked > planLimit) {
+          await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [shop]);
+          await db.run(
+            `UPDATE size_charts
+             SET locked = 1
+             WHERE shop_domain = ? AND id IN (
+               SELECT id FROM size_charts
+               WHERE shop_domain = ?
+               ORDER BY created_at DESC, id DESC
+               LIMIT (SELECT MAX(0, COUNT(*) - ?) FROM size_charts WHERE shop_domain = ?)
+             )`,
+            [shop, shop, planLimit, shop]
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('Lock reconciliation (GET list) skipped:', e.message || e);
+    }
+
     res.set('Cache-Control', 'no-store');
     const recommendations = await req.app.locals.db.all(
       `SELECT * FROM size_charts WHERE shop_domain = ? ORDER BY created_at DESC`,
