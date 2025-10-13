@@ -166,7 +166,13 @@ export function SizeRecommendation({ shop, host }) {
   useEffect(() => {
     (async () => {
       // Trigger plan reconciliation and immediate locking on the server
-      try { await fetch('/api/billing/status'); } catch (_) {}
+      try {
+        const resp = await fetch('/api/billing/status');
+        if (resp && resp.ok) {
+          const bs = await resp.json();
+          setBillingStatus(bs);
+        }
+      } catch (_) {}
       // Then load charts (now reflecting any locks)
       await fetchSizeRecommendations();
     })();
