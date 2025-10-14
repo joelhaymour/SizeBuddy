@@ -31,115 +31,66 @@ export async function requireActiveSubscription(req, res, next) {
   }
 }
 
+// Sync current plan from Shopify Billing API and update database
+async function syncPlanFromShopify(shop, session) {
+  try {
+    if (!session || !session.accessToken) return null;
+    const client = new shopify.api.clients.Graphql({ session });
+    const query = `{
+      currentAppInstallation {
+        activeSubscriptions {
+          id
+          name
+          status
+          lineItems { plan { pricingDetails { ... on AppRecurringPricing { price { amount } interval } } } }
+        }
+      }
+    }`;
+    const resp = await withShopifyRateLimit(() => client.request({ data: { query } }));
+    const subs = resp?.body?.data?.currentAppInstallation?.activeSubscriptions || [];
+    const activeSub = subs.find(s => s.status === 'ACTIVE');
+    if (activeSub) {
+      const planName = activeSub.name || 'Free';
+      const db = await getDb();
+      await db.run(
+        `INSERT INTO subscriptions (shop, plan, status, subscription_id, updated_at)
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(shop) DO UPDATE SET
+           plan = EXCLUDED.plan,
+           status = EXCLUDED.status,
+           subscription_id = EXCLUDED.subscription_id,
+           updated_at = CURRENT_TIMESTAMP`,
+        [shop, planName, 'active', activeSub.id]
+      );
+      return planName;
+    }
+    return null;
+  } catch (e) {
+    console.error('syncPlanFromShopify error:', e);
+    return null;
+  }
+}
+
 // Get current subscription and usage summary
 router.get('/api/billing/status', validateAuthenticatedSession, async (req, res) => {
   try {
     const session = res.locals.shopify.session;
     const db = await getDb();
-    const sub = await db.get('SELECT plan, status FROM subscriptions WHERE shop = ?', [session.shop]);
-    let plan = sub?.plan || 'Free';
-    let status = sub?.status || 'active';
-
-    // Try to detect the current Shopify-managed plan and reconcile immediately
-    try {
-      const gql = new shopify.api.clients.Graphql({ session });
-      const query = `#graphql
-        query AppInstallPlan { currentAppInstallation { activeSubscriptions { name status } } }
-      `;
-      const resp = await gql.request(query);
-      const subs = resp?.body?.data?.currentAppInstallation?.activeSubscriptions || [];
-      const name = (subs[0]?.name || '').toString();
-      const n = name.toLowerCase();
-      const shopifyPlan = n.includes('premium') ? 'Premium' : n.includes('pro') ? 'Pro' : (name ? 'Free' : null);
-      if (shopifyPlan && shopifyPlan !== plan) {
-        plan = shopifyPlan;
-        status = 'active';
-        await db.run(
-          `INSERT INTO subscriptions (shop, plan, status, updated_at)
-           VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-           ON CONFLICT(shop) DO UPDATE SET plan = EXCLUDED.plan, status = EXCLUDED.status, updated_at = CURRENT_TIMESTAMP`,
-          [session.shop, plan, status]
-        );
-      }
-    } catch (_) { /* ignore Shopify lookup errors */ }
-    const totalRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [session.shop]);
-    let unlockedCharts = 0;
-    try {
-      // Ensure locked column exists on legacy DBs
-      if (process.env.DATABASE_URL) {
-        await db.run('ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE');
-      } else {
-        await db.run('ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS locked INTEGER DEFAULT 0');
-      }
-      const unlockedRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked, 0) = 0', [session.shop]);
-      unlockedCharts = unlockedRow?.cnt || 0;
-    } catch (_) {
-      // Fallback if locked doesn't exist yet
-      unlockedCharts = totalRow?.cnt || 0;
-    }
-    const totalCharts = totalRow?.cnt || 0;
-    const planLimit = plan === 'Premium' ? null : (plan === 'Pro' ? 5 : 2);
-
-    // If plan was downgraded and we have more unlocked than allowed, lock immediately (newest first)
-    if (planLimit !== null && typeof planLimit === 'number' && unlockedCharts > planLimit) {
-      try {
-        // Unlock all first, then lock overflow newest first
-        await db.run(`UPDATE size_charts SET locked = 0 WHERE shop_domain = ?`, [session.shop]);
-        await db.run(
-          `UPDATE size_charts
-           SET locked = 1
-           WHERE shop_domain = ? AND id IN (
-             SELECT id FROM size_charts
-             WHERE shop_domain = ?
-             ORDER BY created_at DESC, id DESC
-             LIMIT (SELECT MAX(0, COUNT(*) - ?) FROM size_charts WHERE shop_domain = ?)
-           )`,
-          [session.shop, session.shop, planLimit, session.shop]
-        );
-        const unlockedRow2 = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND COALESCE(locked, 0) = 0', [session.shop]);
-        unlockedCharts = unlockedRow2?.cnt || planLimit;
-      } catch (e) {
-        console.warn('Immediate lock reconciliation failed:', e.message || e);
+    let sub = await db.get('SELECT plan, status, subscription_id FROM subscriptions WHERE shop = ?', [session.shop]);
+    
+    // If no subscription or stale, sync from Shopify API
+    if (!sub || !sub.plan) {
+      const syncedPlan = await syncPlanFromShopify(session.shop, session);
+      if (syncedPlan) {
+        sub = await db.get('SELECT plan, status, subscription_id FROM subscriptions WHERE shop = ?', [session.shop]);
       }
     }
-    res.json({ plan, status, usage: { totalCharts, unlockedCharts, planLimit } });
+    
+    const countRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [session.shop]);
+    const cnt = countRow?.cnt || 0;
+    res.json({ plan: sub?.plan || 'Free', status: sub?.status || 'active', usage: { charts: cnt } });
   } catch (e) {
     console.error('billing/status error:', e);
-    res.status(500).json({ error: 'failed' });
-  }
-});
-
-// Optional: detect Shopify-managed pricing selection (pending plan changes)
-router.get('/api/billing/pending-status', validateAuthenticatedSession, async (req, res) => {
-  try {
-    const session = res.locals.shopify.session;
-    const gql = new shopify.api.clients.Graphql({ session });
-    const query = `#graphql
-      query AppInstallPlan {
-        currentAppInstallation {
-          activeSubscriptions { name status }
-        }
-      }
-    `;
-    let shopifyPlan = null;
-    try {
-      const resp = await gql.request(query);
-      const subs = resp?.body?.data?.currentAppInstallation?.activeSubscriptions || [];
-      const name = (subs[0]?.name || '').toString();
-      const n = name.toLowerCase();
-      if (n.includes('premium')) shopifyPlan = 'Premium';
-      else if (n.includes('pro')) shopifyPlan = 'Pro';
-      else if (name) shopifyPlan = 'Free';
-    } catch (_) {}
-
-    const db = await getDb();
-    const row = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [session.shop]);
-    const storedPlan = row?.plan || 'Free';
-    const limitFor = (p) => (p === 'Premium' ? Infinity : (p === 'Pro' ? 5 : 2));
-    const limits = { stored: limitFor(storedPlan), prospective: shopifyPlan ? limitFor(shopifyPlan) : null };
-    res.json({ storedPlan, shopifyPlan, limits });
-  } catch (e) {
-    console.error('pending-status error:', e);
     res.status(500).json({ error: 'failed' });
   }
 });
@@ -260,6 +211,7 @@ router.get('/api/billing/redirect', async (req, res) => {
 });
 */
 
+export { syncPlanFromShopify };
 export default router;
 
 
