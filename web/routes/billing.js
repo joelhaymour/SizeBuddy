@@ -34,31 +34,54 @@ export async function requireActiveSubscription(req, res, next) {
 // Sync current plan from Shopify Billing API and update database
 async function syncPlanFromShopify(shop, session) {
   try {
-    if (!session || !session.accessToken) return null;
-    const client = new shopify.api.clients.Graphql({ session });
-    const query = `{
-      currentAppInstallation {
-        activeSubscriptions {
-          id
-          name
-          status
-        }
-      }
-    }`;
-    const resp = await withShopifyRateLimit(() => client.request({ data: { query } }));
-    const errors = resp?.body?.errors;
-    if (errors) {
-      console.error('GraphQL errors:', JSON.stringify(errors, null, 2));
+    if (!session || !session.accessToken) {
+      console.log('syncPlanFromShopify: no session or token for', shop);
       return null;
     }
-    const subs = resp?.body?.data?.currentAppInstallation?.activeSubscriptions || [];
-    if (subs.length === 0) {
-      console.log('No active subscriptions found for', shop, '— defaulting to Free');
+    
+    // Use REST API to get recurring application charges (more reliable for managed pricing)
+    const restClient = new shopify.api.clients.Rest({ session });
+    const charges = await withShopifyRateLimit(() => 
+      restClient.get({ path: 'recurring_application_charges' })
+    );
+    
+    const activeCharges = (charges.body?.recurring_application_charges || [])
+      .filter(c => c.status === 'active');
+    
+    if (activeCharges.length === 0) {
+      console.log('No active charges found for', shop, '— assuming Free plan');
+      // Update DB to Free if not set
+      const db = await getDb();
+      await db.run(
+        `INSERT INTO subscriptions (shop, plan, status, updated_at)
+         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(shop) DO UPDATE SET
+           plan = COALESCE(EXCLUDED.plan, subscriptions.plan, 'Free'),
+           updated_at = CURRENT_TIMESTAMP`,
+        [shop, 'Free', 'active']
+      );
       return 'Free';
     }
-    const activeSub = subs.find(s => s.status === 'ACTIVE') || subs[0];
-    const planName = activeSub.name || 'Free';
-    console.log('Synced plan from Shopify:', planName, 'for shop:', shop);
+    
+    // Get the most recent active charge
+    const latestCharge = activeCharges.sort((a, b) => 
+      new Date(b.created_at) - new Date(a.created_at)
+    )[0];
+    
+    // Infer plan from charge name or price
+    let planName = 'Free';
+    if (latestCharge.name && latestCharge.name.toLowerCase().includes('premium')) {
+      planName = 'Premium';
+    } else if (latestCharge.name && latestCharge.name.toLowerCase().includes('pro')) {
+      planName = 'Pro';
+    } else if (latestCharge.price && parseFloat(latestCharge.price) >= 20) {
+      planName = 'Premium';
+    } else if (latestCharge.price && parseFloat(latestCharge.price) >= 10) {
+      planName = 'Pro';
+    }
+    
+    console.log('Synced plan from Shopify REST API:', planName, 'for shop:', shop, '(charge:', latestCharge.name, ')');
+    
     const db = await getDb();
     await db.run(
       `INSERT INTO subscriptions (shop, plan, status, subscription_id, updated_at)
@@ -68,14 +91,11 @@ async function syncPlanFromShopify(shop, session) {
          status = EXCLUDED.status,
          subscription_id = EXCLUDED.subscription_id,
          updated_at = CURRENT_TIMESTAMP`,
-      [shop, planName, 'active', activeSub.id]
+      [shop, planName, 'active', String(latestCharge.id)]
     );
     return planName;
   } catch (e) {
-    console.error('syncPlanFromShopify error:', e);
-    if (e.response?.body?.errors) {
-      console.error('Shopify GraphQL errors:', JSON.stringify(e.response.body.errors, null, 2));
-    }
+    console.error('syncPlanFromShopify error:', e.message || e);
     return null;
   }
 }
