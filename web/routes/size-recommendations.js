@@ -215,11 +215,19 @@ router.post('/api/size-recommendations', async (req, res) => {
     
     // If at limit, try syncing plan from Shopify before rejecting (in case webhook missed an upgrade)
     if (cnt >= limit && plan !== 'Premium') {
-      const session = res.locals?.shopify?.session;
-      if (session && session.accessToken) {
+      // Load offline session for this shop to query Shopify API
+      let sessionForSync = res.locals?.shopify?.session;
+      if (!sessionForSync || !sessionForSync.accessToken) {
+        try {
+          const sessions = await shopify.sessionStorage.findSessionsByShop(resolvedShop);
+          sessionForSync = (sessions || []).find(s => s && s.accessToken) || null;
+        } catch {}
+      }
+      if (sessionForSync && sessionForSync.accessToken) {
         const { syncPlanFromShopify } = await import('./billing.js');
-        const syncedPlan = await syncPlanFromShopify(resolvedShop, session);
+        const syncedPlan = await syncPlanFromShopify(resolvedShop, sessionForSync);
         if (syncedPlan && syncedPlan !== plan) {
+          console.log(`Plan synced from ${plan} to ${syncedPlan} for ${resolvedShop}`);
           plan = syncedPlan;
           limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
         }
