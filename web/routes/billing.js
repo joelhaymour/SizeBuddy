@@ -42,7 +42,6 @@ async function syncPlanFromShopify(shop, session) {
           id
           name
           status
-          lineItems { plan { pricingDetails { ... on AppRecurringPricing { price { amount } interval } } } }
         }
       }
     }`;
