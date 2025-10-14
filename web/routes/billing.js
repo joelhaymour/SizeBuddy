@@ -46,26 +46,36 @@ async function syncPlanFromShopify(shop, session) {
       }
     }`;
     const resp = await withShopifyRateLimit(() => client.request({ data: { query } }));
-    const subs = resp?.body?.data?.currentAppInstallation?.activeSubscriptions || [];
-    const activeSub = subs.find(s => s.status === 'ACTIVE');
-    if (activeSub) {
-      const planName = activeSub.name || 'Free';
-      const db = await getDb();
-      await db.run(
-        `INSERT INTO subscriptions (shop, plan, status, subscription_id, updated_at)
-         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(shop) DO UPDATE SET
-           plan = EXCLUDED.plan,
-           status = EXCLUDED.status,
-           subscription_id = EXCLUDED.subscription_id,
-           updated_at = CURRENT_TIMESTAMP`,
-        [shop, planName, 'active', activeSub.id]
-      );
-      return planName;
+    const errors = resp?.body?.errors;
+    if (errors) {
+      console.error('GraphQL errors:', JSON.stringify(errors, null, 2));
+      return null;
     }
-    return null;
+    const subs = resp?.body?.data?.currentAppInstallation?.activeSubscriptions || [];
+    if (subs.length === 0) {
+      console.log('No active subscriptions found for', shop, '— defaulting to Free');
+      return 'Free';
+    }
+    const activeSub = subs.find(s => s.status === 'ACTIVE') || subs[0];
+    const planName = activeSub.name || 'Free';
+    console.log('Synced plan from Shopify:', planName, 'for shop:', shop);
+    const db = await getDb();
+    await db.run(
+      `INSERT INTO subscriptions (shop, plan, status, subscription_id, updated_at)
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(shop) DO UPDATE SET
+         plan = EXCLUDED.plan,
+         status = EXCLUDED.status,
+         subscription_id = EXCLUDED.subscription_id,
+         updated_at = CURRENT_TIMESTAMP`,
+      [shop, planName, 'active', activeSub.id]
+    );
+    return planName;
   } catch (e) {
     console.error('syncPlanFromShopify error:', e);
+    if (e.response?.body?.errors) {
+      console.error('Shopify GraphQL errors:', JSON.stringify(e.response.body.errors, null, 2));
+    }
     return null;
   }
 }
