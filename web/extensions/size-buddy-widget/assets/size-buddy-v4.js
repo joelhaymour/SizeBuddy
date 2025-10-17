@@ -324,8 +324,10 @@
       try {
         // Add timestamp to prevent caching
         const timestamp = Date.now();
+        // Use current domain (handles custom domains like rouqegolf.com)
+        const currentDomain = window.location.hostname;
         // Preferred: use app proxy (works in production, signed by Shopify)
-        const proxyUrl = 'https://' + shopDomain + '/apps/size-buddy/size-charts?product_id=' + productId + '&_=' + timestamp;
+        const proxyUrl = 'https://' + currentDomain + '/apps/size-buddy/size-charts?product_id=' + productId + '&_=' + timestamp;
         // Fallback (public, read-only): server public endpoint
         const directUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com') + '/public/size-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
         
