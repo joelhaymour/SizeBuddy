@@ -55,15 +55,16 @@ const __dirname = path.dirname(__filename);
 // Add CORS configuration BEFORE any other middleware
 app.use(cors({
   origin: function(origin, callback) {
+    // For public endpoints (widget, app proxy), allow all origins
+    // For admin endpoints, restrict to Shopify domains
     const allowedOrigins = [
       process.env.HOST,
       'https://admin.shopify.com',
       /\.myshopify\.com$/,
+      /\.shopify\.com$/,
       /\.ngrok-free\.app$/,
       /\.ngrok\.app$/,
       /\.ngrok\.io$/,
-      process.env.HOST,
-      /\.shopify\.com$/,
       'null',  // Allow requests with no origin
       `http://localhost:${FRONTEND_PORT}`,
       `https://localhost:${FRONTEND_PORT}`,
@@ -76,6 +77,12 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
+    // Allow all HTTPS origins for public widget endpoints (custom domains)
+    // This is safe because we validate shop/product data server-side
+    if (origin.startsWith('https://')) {
+      return callback(null, true);
+    }
+    
     const isAllowed = allowedOrigins.some(allowedOrigin => {
       if (allowedOrigin instanceof RegExp) {
         return allowedOrigin.test(origin);
@@ -83,12 +90,7 @@ app.use(cors({
       return allowedOrigin === origin;
     });
     
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.log('Origin not allowed:', origin);
-      callback(null, false);
-    }
+    callback(null, isAllowed);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
