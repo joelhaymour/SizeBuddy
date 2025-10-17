@@ -25,7 +25,6 @@ import {
   RangeSlider
 } from "@shopify/polaris";
 import { ResourcePicker } from "@shopify/app-bridge-react";
-import { Redirect } from '@shopify/app-bridge/actions';
 import {
   CircleTickMajor,
   CirclePlusMajor,
@@ -58,9 +57,6 @@ export function SizeRecommendation({ shop, host }) {
   const isMounted = useRef(true);
   const [editingRecommendationId, setEditingRecommendationId] = useState(null);
   const [limitBanner, setLimitBanner] = useState(false);
-  const [billingStatus, setBillingStatus] = useState(null);
-  const [overLimit, setOverLimit] = useState(false);
-  const [hasLocked, setHasLocked] = useState(false);
 
   // Add custom styles for the modal
   useEffect(() => {
@@ -130,13 +126,7 @@ export function SizeRecommendation({ shop, host }) {
       
       const data = await response.json();
       console.log('Received data:', data);
-      const sorted = Array.isArray(data)
-        ? [...data].sort((a, b) => (Number(a.locked || 0) - Number(b.locked || 0)))
-        : [];
-      if (isMounted.current) {
-        setSizeRecommendations(sorted);
-        setHasLocked(sorted.some((r) => !!r.locked));
-      }
+      if (isMounted.current) setSizeRecommendations(data);
     } catch (error) {
       console.error('Error fetching size recommendations:', error);
       setToastProps({
@@ -149,34 +139,11 @@ export function SizeRecommendation({ shop, host }) {
     }
   }, [fetch, shop]);
 
-  const fetchBillingStatus = useCallback(async () => {
-    try {
-      const response = await fetch('/api/billing/status');
-      if (!response.ok) return;
-      const data = await response.json();
-      setBillingStatus(data);
-      const limit = data?.usage?.planLimit;
-      const unlocked = data?.usage?.unlockedCharts || 0;
-      setOverLimit(limit !== null && typeof limit === 'number' && unlocked > limit);
-    } catch (e) {
-      // ignore
-    }
-  }, [fetch]);
-
   useEffect(() => {
-    (async () => {
-      // Trigger plan reconciliation and immediate locking on the server
-      try {
-        const resp = await fetch('/api/billing/status');
-        if (resp && resp.ok) {
-          const bs = await resp.json();
-          setBillingStatus(bs);
-        }
-      } catch (_) {}
-      // Then load charts (now reflecting any locks)
-      await fetchSizeRecommendations();
-    })();
-    return () => { isMounted.current = false; };
+    fetchSizeRecommendations();
+    return () => {
+      isMounted.current = false;
+    };
   }, [fetchSizeRecommendations]);
 
   const handleModalOpen = () => {
@@ -594,7 +561,6 @@ export function SizeRecommendation({ shop, host }) {
       setShowToast(true);
       handleModalClose();
       fetchSizeRecommendations();
-      fetchBillingStatus();
     } catch (error) {
       console.error('Error saving size recommendation:', error);
       setToastProps({
@@ -1321,30 +1287,6 @@ export function SizeRecommendation({ shop, host }) {
 
   return (
     <>
-      {hasLocked && (
-        <Box padding="4">
-          <Banner
-            status="info"
-            title="Some newer charts are locked"
-            action={{
-              content: 'Manage plan',
-              onAction: () => {
-                const redirect = Redirect.create(app);
-                const APP_HANDLE = 'size-buddy-v6-testing';
-                redirect.dispatch(
-                  Redirect.Action.ADMIN_PATH,
-                  `/charges/${APP_HANDLE}/pricing_plans`,
-                  { newContext: true }
-                );
-              }
-            }}
-          >
-            <p>
-              Upgrade your plan or delete locked charts to free a slot. Locked charts are marked and cannot be edited.
-            </p>
-          </Banner>
-        </Box>
-      )}
       <Modal
         open={isModalOpen}
         onClose={handleModalClose}
@@ -1450,20 +1392,19 @@ export function SizeRecommendation({ shop, host }) {
                     renderItem={(item) => (
                       <ResourceItem id={item.id}>
                         <LegacyStack distribution="equalSpacing" alignment="center">
-                  <LegacyStack vertical>
+                          <LegacyStack vertical>
                             <Text variant="bodyMd" as="h3" fontWeight="bold">
                               {item.name}
                             </Text>
-                    <LegacyStack>
-                      <Badge status="info">{item.category}</Badge>
-                      <Badge status="success">{item.fit_type} Fit</Badge>
-                      {item.locked ? <Badge status="attention">Locked</Badge> : null}
-                    </LegacyStack>
+                            <LegacyStack>
+                              <Badge status="info">{item.category}</Badge>
+                              <Badge status="success">{item.fit_type} Fit</Badge>
+                            </LegacyStack>
                           </LegacyStack>
-                  <ButtonGroup>
-                    <Button onClick={() => handleEdit(item)} disabled={!!item.locked}>Edit</Button>
-                    <Button destructive onClick={() => handleDelete(item.id)}>Delete</Button>
-                  </ButtonGroup>
+                          <ButtonGroup>
+                            <Button onClick={() => handleEdit(item)}>Edit</Button>
+                            <Button destructive onClick={() => handleDelete(item.id)}>Delete</Button>
+                          </ButtonGroup>
                         </LegacyStack>
                       </ResourceItem>
                     )}
@@ -1489,7 +1430,34 @@ export function SizeRecommendation({ shop, host }) {
             </LegacyCard.Section>
             <LegacyCard.Section>
               <Text variant="headingMd" as="h3">
-                How it works
+                Setup Instructions
+              </Text>
+              <Box paddingBlockStart="3">
+                <LegacyStack vertical spacing="3">
+                  <Text as="p" variant="bodyMd" fontWeight="semibold">
+                    Step 1: Add the Size Buddy widget to your theme
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    • Go to <strong>Online Store → Themes → Customize</strong>
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    • Open a product page template
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    • Click <strong>Add block</strong> → <strong>Apps</strong> → <strong>Size Buddy</strong>
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    • Position the block where you want the "Find My Size" button to appear
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    • Click <strong>Save</strong>
+                  </Text>
+                </LegacyStack>
+              </Box>
+            </LegacyCard.Section>
+            <LegacyCard.Section>
+              <Text variant="headingMd" as="h3">
+                How to create size recommendations
               </Text>
               <Box paddingBlockStart="3">
                 <LegacyStack vertical spacing="3">
@@ -1504,6 +1472,9 @@ export function SizeRecommendation({ shop, host }) {
                   </Text>
                   <Text as="p" variant="bodyMd">
                     4. Review and customize the measurements
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    5. Select the products to apply this size chart to
                   </Text>
                 </LegacyStack>
               </Box>
