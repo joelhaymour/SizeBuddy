@@ -1264,14 +1264,16 @@
             console.log(`Size ${size.size} score: ${score.toFixed(2)}`);
           });
           if (bestSizes.length > 0) {
-            // Pick the largest size if multiple
+            // Sort by size order
             bestSizes.sort((a, b) => {
               const order = ['XS','S','M','L','XL','XXL'];
               return order.indexOf(a) - order.indexOf(b);
             });
-            bestSize = bestSizes[bestSizes.length - 1];
+            // Pick the middle size if multiple ties (conservative fit)
+            const middleIndex = Math.floor(bestSizes.length / 2);
+            bestSize = bestSizes[middleIndex];
             bestScore = bestScore;
-            console.log(`Selected ${bestSize} with score ${bestScore.toFixed(2)}`);
+            console.log(`Selected ${bestSize} with score ${bestScore.toFixed(2)} (from ${bestSizes.length} tied sizes: ${bestSizes.join(', ')})`);
             // Show result and highlight as before
             resultDiv.innerHTML = 
               '<div class="size-buddy-result-container" style="margin:25px auto;padding:25px;background-color:#f1f9f1;border-radius:10px;text-align:center;max-width:400px;box-shadow:0 3px 10px rgba(0,0,0,0.08);border-left:4px solid #4caf50;opacity:0;transform:translateY(20px);">' +
