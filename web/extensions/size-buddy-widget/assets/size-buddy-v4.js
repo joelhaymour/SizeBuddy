@@ -1222,8 +1222,9 @@
           }
         }
         
-        // Improved logic for Bikini Tops / Bras
-        if (chart.category && chart.category === 'Bikini Tops / Bras' && userMeasurements.band_size && userMeasurements.cup_size) {
+        // Improved logic for Bikini Tops / Bras (check both DB value 'bikinis' and display name)
+        const isBikiniCategory = chart.category && (chart.category === 'Bikini Tops / Bras' || chart.category === 'bikinis' || chart.category.toLowerCase() === 'bikinis');
+        if (isBikiniCategory && userMeasurements.band_size && userMeasurements.cup_size) {
           let bestScore = -Infinity;
           let bestSizes = [];
           chart.sizes.forEach(size => {
