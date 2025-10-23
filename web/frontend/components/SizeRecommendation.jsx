@@ -656,11 +656,40 @@ export function SizeRecommendation({ shop, host }) {
       />
       <Box paddingBlockStart="4">
         <Text variant="headingMd" as="h3">Select Fit Type</Text>
-        <ButtonGroup fullWidth>
-          <Button onClick={() => handleFitTypeSelect('slim')}>Slim Fit</Button>
-          <Button onClick={() => handleFitTypeSelect('regular')}>Regular Fit</Button>
-          <Button onClick={() => handleFitTypeSelect('loose')}>Loose Fit</Button>
-        </ButtonGroup>
+        <Box paddingBlockStart="2">
+          <LegacyStack vertical spacing="3">
+            <Button 
+              fullWidth 
+              onClick={() => handleFitTypeSelect('slim')}
+              textAlign="left"
+            >
+              <LegacyStack vertical spacing="1">
+                <Text variant="bodyMd" fontWeight="semibold">Small Fit</Text>
+                <Text variant="bodySm" color="subdued">Recommends sizing up from standard (runs small)</Text>
+              </LegacyStack>
+            </Button>
+            <Button 
+              fullWidth 
+              onClick={() => handleFitTypeSelect('regular')}
+              textAlign="left"
+            >
+              <LegacyStack vertical spacing="1">
+                <Text variant="bodyMd" fontWeight="semibold">Standard Fit</Text>
+                <Text variant="bodySm" color="subdued">Recommends true to size</Text>
+              </LegacyStack>
+            </Button>
+            <Button 
+              fullWidth 
+              onClick={() => handleFitTypeSelect('loose')}
+              textAlign="left"
+            >
+              <LegacyStack vertical spacing="1">
+                <Text variant="bodyMd" fontWeight="semibold">Large Fit</Text>
+                <Text variant="bodySm" color="subdued">Recommends sizing down from standard (runs large)</Text>
+              </LegacyStack>
+            </Button>
+          </LegacyStack>
+        </Box>
       </Box>
     </>
   );
@@ -1398,7 +1427,9 @@ export function SizeRecommendation({ shop, host }) {
                             </Text>
                             <LegacyStack>
                               <Badge status="info">{item.category}</Badge>
-                              <Badge status="success">{item.fit_type} Fit</Badge>
+                              <Badge status="success">
+                                {item.fit_type === 'slim' ? 'Small Fit' : item.fit_type === 'regular' ? 'Standard Fit' : item.fit_type === 'loose' ? 'Large Fit' : item.fit_type + ' Fit'}
+                              </Badge>
                             </LegacyStack>
                           </LegacyStack>
                           <ButtonGroup>
@@ -1468,7 +1499,7 @@ export function SizeRecommendation({ shop, host }) {
                     2. Name your size recommendation
                   </Text>
                   <Text as="p" variant="bodyMd">
-                    3. Select the fit type (Slim, Regular, or Loose)
+                    3. Select the fit type (Small Fit, Standard Fit, or Large Fit)
                   </Text>
                   <Text as="p" variant="bodyMd">
                     4. Review and customize the measurements
