@@ -34,7 +34,9 @@ import { Analytics } from "../components/Analytics";
 import { useAuthenticatedFetch } from "@shopify/app-bridge-react";
 
 export default function HomePage() {
-  const [selectedTab, setSelectedTab] = useState(0);
+  const urlParams = new URLSearchParams(window.location.search);
+  const tabFromUrl = parseInt(urlParams.get('tab') || '0', 10);
+  const [selectedTab, setSelectedTab] = useState(tabFromUrl);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [shop, setShop] = useState(null);
@@ -42,7 +44,6 @@ export default function HomePage() {
   const fetch = useAuthenticatedFetch();
 
   // Get URL params
-  const urlParams = new URLSearchParams(window.location.search);
   const shopFromUrl = urlParams.get('shop');
   const hostFromUrl = urlParams.get('host');
 
@@ -57,6 +58,12 @@ export default function HomePage() {
     setHost(hostFromUrl);
     setIsLoading(false);
   }, [shopFromUrl, hostFromUrl]);
+  
+  // Update tab when URL changes
+  useEffect(() => {
+    const tabParam = parseInt(urlParams.get('tab') || '0', 10);
+    setSelectedTab(tabParam);
+  }, [window.location.search]);
 
   const tabs = [
     {
@@ -83,32 +90,7 @@ export default function HomePage() {
     setSelectedTab(selectedTabIndex);
   }, []);
 
-  const navigationMarkup = (
-    <Navigation location="/">
-      <Navigation.Section
-        items={[
-          {
-            label: 'Size Recommendations',
-            icon: ImageMajor,
-            selected: selectedTab === 0,
-            onClick: () => setSelectedTab(0),
-          },
-          {
-            label: 'Analytics',
-            icon: ReportMinor,
-            selected: selectedTab === 1,
-            onClick: () => setSelectedTab(1),
-          },
-          {
-            label: 'Plans',
-            icon: EditMinor,
-            selected: selectedTab === 2,
-            onClick: () => setSelectedTab(2),
-          },
-        ]}
-      />
-    </Navigation>
-  );
+  // Navigation removed - using App Bridge NavigationMenu only
 
   if (isLoading) {
     return (
@@ -153,34 +135,14 @@ export default function HomePage() {
   }
 
   return (
-    <Frame navigation={navigationMarkup}>
+    <Frame>
       <Page fullWidth>
         <TitleBar title="Size Buddy" />
         <Layout>
           <Layout.Section>
-            <Box paddingBlockEnd="4">
-              <LegacyCard roundedAbove="sm">
-                <LegacyCard.Section>
-                  <Text as="h2" variant="headingLg">
-                    Welcome to Size Buddy
-                  </Text>
-                  <Box paddingBlockStart="3">
-                    <Text as="p" variant="bodyMd">
-                      Help your customers find their perfect size with our smart size recommendation system.
-                      Get started by creating size recommendations for your products.
-                    </Text>
-                  </Box>
-                </LegacyCard.Section>
-              </LegacyCard>
-            </Box>
-
-            <Tabs tabs={tabs} selected={selectedTab} onSelect={handleTabChange} fitted />
-
-            <LegacyCard.Section>
-              {selectedTab === 0 && <SizeRecommendation shop={shop} host={host} />}
-              {selectedTab === 1 && <Analytics shop={shop} host={host} />}
-              {selectedTab === 2 && <Plans />}
-            </LegacyCard.Section>
+            {selectedTab === 0 && <SizeRecommendation shop={shop} host={host} />}
+            {selectedTab === 1 && <Analytics shop={shop} host={host} />}
+            {selectedTab === 2 && <Plans />}
           </Layout.Section>
         </Layout>
       </Page>

@@ -61,12 +61,16 @@ export default function App() {
             <NavigationMenu
               navigationLinks={[
                 {
-                  label: "Home",
-                  destination: `/?shop=${shop}&host=${host}`,
+                  label: "Size Recommendations",
+                  destination: `/?shop=${shop}&host=${host}&tab=0`,
+                },
+                {
+                  label: "Analytics",
+                  destination: `/?shop=${shop}&host=${host}&tab=1`,
                 },
                 {
                   label: "Plans",
-                  destination: `/plans?shop=${shop}&host=${host}`,
+                  destination: `/?shop=${shop}&host=${host}&tab=2`,
                 },
               ]}
             />
