@@ -67,10 +67,10 @@ router.get("/api/analytics", validateAuthenticatedSession, async (req, res) => {
     );
     const totalRecommendations = recommendationsResult.count || 0;
     
-    // Get total views from analytics_events
+    // Get total views from analytics_events (filter by shop for multi-tenancy)
     const viewsResult = await db.get(
-      'SELECT COUNT(*) as count FROM analytics_events WHERE event_type = ? AND created_at >= ?',
-      ['widget_view', startDate.toISOString()]
+      'SELECT COUNT(*) as count FROM analytics_events WHERE event_type = ? AND created_at >= ? AND shop = ?',
+      ['widget_view', startDate.toISOString(), shop]
     );
     const totalViews = viewsResult.count || 0;
     
