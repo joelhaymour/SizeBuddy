@@ -188,7 +188,22 @@ export function Analytics({ shop, host }) {
   }
 
   return (
-    <Box padding="4">
+    <>
+      <Box paddingBlockEnd="4">
+        <LegacyCard roundedAbove="sm">
+          <LegacyCard.Section>
+            <Text as="h2" variant="headingLg">
+              Analytics & Insights
+            </Text>
+            <Box paddingBlockStart="3">
+              <Text as="p" variant="bodyMd">
+                See how your size recommendations are helping your customers find their perfect fit. Track engagement and optimize your sizing strategy.
+              </Text>
+            </Box>
+          </LegacyCard.Section>
+        </LegacyCard>
+      </Box>
+      
       <LegacyCard>
         <LegacyCard.Section>
           <LegacyStack distribution="equalSpacing" alignment="center">
@@ -231,6 +246,6 @@ export function Analytics({ shop, host }) {
           </Box>
         </LegacyCard.Section>
       </LegacyCard>
-    </Box>
+    </>
   );
 } 

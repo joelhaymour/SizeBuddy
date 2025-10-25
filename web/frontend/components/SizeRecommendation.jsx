@@ -1393,6 +1393,20 @@ export function SizeRecommendation({ shop, host }) {
 
       <Layout>
         <Layout.Section>
+          <Box paddingBlockEnd="4">
+            <LegacyCard roundedAbove="sm">
+              <LegacyCard.Section>
+                <Text as="h2" variant="headingLg">
+                  Welcome to Size Buddy
+                </Text>
+                <Box paddingBlockStart="3">
+                  <Text as="p" variant="bodyMd">
+                    Help your customers find their perfect size with our smart size recommendation system. Get started by creating size recommendations for your products.
+                  </Text>
+                </Box>
+              </LegacyCard.Section>
+            </LegacyCard>
+          </Box>
           <LegacyCard>
             <Box padding="4">
               {sizeRecommendations.length === 0 ? (
