@@ -34,9 +34,7 @@ import { Analytics } from "../components/Analytics";
 import { useAuthenticatedFetch } from "@shopify/app-bridge-react";
 
 export default function HomePage() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const tabFromUrl = parseInt(urlParams.get('tab') || '0', 10);
-  const [selectedTab, setSelectedTab] = useState(tabFromUrl);
+  const [selectedTab, setSelectedTab] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [shop, setShop] = useState(null);
@@ -44,6 +42,7 @@ export default function HomePage() {
   const fetch = useAuthenticatedFetch();
 
   // Get URL params
+  const urlParams = new URLSearchParams(window.location.search);
   const shopFromUrl = urlParams.get('shop');
   const hostFromUrl = urlParams.get('host');
 
@@ -57,13 +56,11 @@ export default function HomePage() {
     setShop(shopFromUrl);
     setHost(hostFromUrl);
     setIsLoading(false);
-  }, [shopFromUrl, hostFromUrl]);
-  
-  // Update tab when URL changes
-  useEffect(() => {
+    
+    // Set tab from URL param
     const tabParam = parseInt(urlParams.get('tab') || '0', 10);
     setSelectedTab(tabParam);
-  }, [window.location.search]);
+  }, [shopFromUrl, hostFromUrl, urlParams]);
 
   const tabs = [
     {
