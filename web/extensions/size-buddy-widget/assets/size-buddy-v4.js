@@ -1031,14 +1031,27 @@
 
             const nearUpperWeight = !isNaN(wMin) && !isNaN(wMax) && weightLbs >= (wMin + 0.8 * (wMax - wMin));
             const nearUpperHeight = !isNaN(hMin) && !isNaN(hMax) && heightInches >= (hMin + 0.8 * (hMax - hMin));
-
-            const matchScore = Math.min(1, (0.55 * hScore) + (0.45 * wScore) + (nearUpperWeight ? 0.08 : 0) + (nearUpperHeight ? 0.03 : 0));
-            console.log(`Size ${size.size || size.name}: hScore=${hScore.toFixed(3)}, wScore=${wScore.toFixed(3)}, nearUpperWeight=${nearUpperWeight}, matchScore=${matchScore.toFixed(3)}, weightRange=[${wMin}-${wMax}]`);
+            
+            // CRITICAL FIX: If weight exceeds maximum, disqualify this size (can't be selected)
+            // A size that's too small should never win over a size that fits
+            const weightExceedsMax = !isNaN(wMax) && weightLbs > wMax;
+            
+            let matchScore;
+            if (weightExceedsMax) {
+              // Disqualify: set score to 0 so it can't win
+              matchScore = 0;
+              console.log(`Size ${size.size || size.name}: DISQUALIFIED - weight ${weightLbs} exceeds max ${wMax}`);
+            } else {
+              matchScore = Math.min(1, (0.55 * hScore) + (0.45 * wScore) + (nearUpperWeight ? 0.08 : 0) + (nearUpperHeight ? 0.03 : 0));
+            }
+            
+            console.log(`Size ${size.size || size.name}: hScore=${hScore.toFixed(3)}, wScore=${wScore.toFixed(3)}, nearUpperWeight=${nearUpperWeight}, matchScore=${matchScore.toFixed(3)}, weightRange=[${wMin}-${wMax}], weightExceedsMax=${weightExceedsMax}`);
             candidates.push({
               name: size.size || size.name,
               score: matchScore,
               wMin, wMax, hMin, hMax,
-              nearUpperWeight
+              nearUpperWeight,
+              weightExceedsMax
             });
           });
           
