@@ -28,8 +28,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // IMPORTANT: Force replace any existing content with our button and modal
   // This ensures the widget displays correctly regardless of initial HTML
   widget.innerHTML = `
-    <button id="size-buddy-toggle-btn" class="size-buddy-toggle-btn" type="button">Size Buddy</button>
-    <div id="size-buddy-modal" class="size-buddy-modal" style="display: none;">
+    <button id="size-buddy-toggle-btn" class="size-buddy-toggle-btn">Size Buddy</button>
+    <div id="size-buddy-modal" class="size-buddy-modal">
       <div class="size-buddy-modal-content">
         <span class="size-buddy-close">&times;</span>
         <div class="size-buddy-content"></div>
@@ -37,26 +37,14 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
   `;
   
-  // Small delay to ensure DOM is updated
-  setTimeout(function() {
-    // Get the content container
-    const contentContainer = widget.querySelector('.size-buddy-content');
-    const toggleButton = document.getElementById('size-buddy-toggle-btn');
-    const modal = document.getElementById('size-buddy-modal');
-    const closeButton = widget.querySelector('.size-buddy-close');
+  // Get the content container
+  const contentContainer = widget.querySelector('.size-buddy-content');
+  const toggleButton = document.getElementById('size-buddy-toggle-btn');
+  const modal = document.getElementById('size-buddy-modal');
+  const closeButton = widget.querySelector('.size-buddy-close');
   
   if (!contentContainer) {
     console.error('Size Buddy: Content container not found!');
-    return;
-  }
-
-  if (!toggleButton) {
-    console.error('Size Buddy: Toggle button not found!');
-    return;
-  }
-
-  if (!modal) {
-    console.error('Size Buddy: Modal not found!');
     return;
   }
 
@@ -69,21 +57,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  if (closeButton) {
-    closeButton.addEventListener('click', function() {
-      modal.style.display = 'none';
-    });
-  }
+  closeButton.addEventListener('click', function() {
+    modal.style.display = 'none';
+  });
 
-    // Close the modal when clicking outside of it
-    window.addEventListener('click', function(event) {
-      if (event.target === modal) {
-        modal.style.display = 'none';
-      }
-    });
-    
-    console.log('Size Buddy: Event listeners attached successfully');
-  }, 10); // Small delay to ensure DOM is ready
+  // Close the modal when clicking outside of it
+  window.addEventListener('click', function(event) {
+    if (event.target === modal) {
+      modal.style.display = 'none';
+    }
+  });
   
   // Function to load size recommendations
   async function loadSizeRecommendations() {
@@ -949,32 +932,6 @@ document.addEventListener('DOMContentLoaded', function() {
       const isTopsCategory = chart.category && chart.category.toLowerCase() === 'tops';
       const hasScoreRanges = chart.sizes.some(size => size.score && typeof size.score === 'string');
       const hasHeightAndWeight = userMeasurements.height && userMeasurements.weight;
-      
-      // *** DEBUG LOGGING - Remove after fixing ***
-      console.log('=== SIZE BUDDY DEBUG - Score-Based Sizing Check ===');
-      console.log('Chart category:', chart.category);
-      console.log('isTopsCategory:', isTopsCategory);
-      console.log('hasHeightAndWeight:', hasHeightAndWeight, {
-        height: userMeasurements.height,
-        weight: userMeasurements.weight
-      });
-      console.log('hasScoreRanges:', hasScoreRanges);
-      console.log('Chart sizes with score details:');
-      chart.sizes.forEach((size, index) => {
-        console.log(`  Size ${index + 1} (${size.size || size.name}):`, {
-          hasScore: !!size.score,
-          scoreType: typeof size.score,
-          scoreValue: size.score,
-          allKeys: Object.keys(size)
-        });
-      });
-      console.log('Condition check:', {
-        isTopsCategory,
-        hasScoreRanges,
-        hasHeightAndWeight,
-        willUseScoreBased: isTopsCategory && hasScoreRanges && hasHeightAndWeight
-      });
-      console.log('=== END DEBUG ===');
       
       // Only use score-based sizing for tops category
       if (isTopsCategory && hasScoreRanges && hasHeightAndWeight) {
