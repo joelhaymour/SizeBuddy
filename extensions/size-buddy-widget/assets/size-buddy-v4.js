@@ -933,6 +933,32 @@ document.addEventListener('DOMContentLoaded', function() {
       const hasScoreRanges = chart.sizes.some(size => size.score && typeof size.score === 'string');
       const hasHeightAndWeight = userMeasurements.height && userMeasurements.weight;
       
+      // *** DEBUG LOGGING - Remove after fixing ***
+      console.log('=== SIZE BUDDY DEBUG - Score-Based Sizing Check ===');
+      console.log('Chart category:', chart.category);
+      console.log('isTopsCategory:', isTopsCategory);
+      console.log('hasHeightAndWeight:', hasHeightAndWeight, {
+        height: userMeasurements.height,
+        weight: userMeasurements.weight
+      });
+      console.log('hasScoreRanges:', hasScoreRanges);
+      console.log('Chart sizes with score details:');
+      chart.sizes.forEach((size, index) => {
+        console.log(`  Size ${index + 1} (${size.size || size.name}):`, {
+          hasScore: !!size.score,
+          scoreType: typeof size.score,
+          scoreValue: size.score,
+          allKeys: Object.keys(size)
+        });
+      });
+      console.log('Condition check:', {
+        isTopsCategory,
+        hasScoreRanges,
+        hasHeightAndWeight,
+        willUseScoreBased: isTopsCategory && hasScoreRanges && hasHeightAndWeight
+      });
+      console.log('=== END DEBUG ===');
+      
       // Only use score-based sizing for tops category
       if (isTopsCategory && hasScoreRanges && hasHeightAndWeight) {
         // New score-based approach - combine height and weight
