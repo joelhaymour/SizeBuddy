@@ -48,6 +48,16 @@ document.addEventListener('DOMContentLoaded', function() {
     return;
   }
 
+  if (!toggleButton) {
+    console.error('Size Buddy: Toggle button not found!');
+    return;
+  }
+
+  if (!modal) {
+    console.error('Size Buddy: Modal not found!');
+    return;
+  }
+
   // Add event listeners for the button and modal
   toggleButton.addEventListener('click', function() {
     modal.style.display = 'block';
@@ -57,9 +67,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  closeButton.addEventListener('click', function() {
-    modal.style.display = 'none';
-  });
+  if (closeButton) {
+    closeButton.addEventListener('click', function() {
+      modal.style.display = 'none';
+    });
+  }
 
   // Close the modal when clicking outside of it
   window.addEventListener('click', function(event) {
