@@ -1011,6 +1011,7 @@
                   // Weight is within range - calculate score based on distance from center
                   const base = Math.max(0, 1 - (Math.abs(weightLbs - center) / half));
                   wScore = 0.6 + 0.4 * base;
+                  console.log(`Size ${size.size || size.name}: Weight ${weightLbs} INSIDE range [${wMin}-${wMax}], wScore=${wScore.toFixed(3)}`);
                 } else if (weightLbs > wMax) {
                   // Weight exceeds maximum - heavily penalize (size is too small)
                   // Penalty increases the further above the max
@@ -1018,10 +1019,12 @@
                   const range = wMax - wMin;
                   const excessRatio = excess / (range || 1);
                   wScore = Math.max(0, 0.3 - (excessRatio * 0.3)); // Penalty: 0.3 down to 0
+                  console.log(`Size ${size.size || size.name}: Weight ${weightLbs} EXCEEDS max ${wMax} (excess=${excess}, ratio=${excessRatio.toFixed(3)}), wScore=${wScore.toFixed(3)}`);
                 } else {
                   // Weight is below minimum - small penalty
                   const base = Math.max(0, 1 - (Math.abs(weightLbs - center) / half));
                   wScore = base * 0.5;
+                  console.log(`Size ${size.size || size.name}: Weight ${weightLbs} BELOW min ${wMin}, wScore=${wScore.toFixed(3)}`);
                 }
               }
             }
@@ -1030,6 +1033,7 @@
             const nearUpperHeight = !isNaN(hMin) && !isNaN(hMax) && heightInches >= (hMin + 0.8 * (hMax - hMin));
 
             const matchScore = Math.min(1, (0.55 * hScore) + (0.45 * wScore) + (nearUpperWeight ? 0.08 : 0) + (nearUpperHeight ? 0.03 : 0));
+            console.log(`Size ${size.size || size.name}: hScore=${hScore.toFixed(3)}, wScore=${wScore.toFixed(3)}, nearUpperWeight=${nearUpperWeight}, matchScore=${matchScore.toFixed(3)}, weightRange=[${wMin}-${wMax}]`);
             candidates.push({
               name: size.size || size.name,
               score: matchScore,
@@ -1037,17 +1041,27 @@
               nearUpperWeight
             });
           });
+          
+          console.log('=== ALL CANDIDATES BEFORE SELECTION ===');
+          candidates.forEach(c => {
+            console.log(`  ${c.name}: score=${c.score.toFixed(3)}, weightRange=[${c.wMin}-${c.wMax}], nearUpperWeight=${c.nearUpperWeight}`);
+          });
 
           // Choose the best, but prefer sizing up when scores are close and weight is at the top of range
           if (candidates.length) {
             candidates.sort((a,b) => b.score - a.score || order.indexOf(a.name) - order.indexOf(b.name));
             const topScore = candidates[0].score;
+            console.log(`Top score: ${topScore.toFixed(3)}`);
             const close = candidates.filter(c => c.score >= topScore - 0.02);
+            console.log(`Close candidates (within 0.02): ${close.map(c => c.name).join(', ')}`);
             const withUpper = close.filter(c => c.nearUpperWeight);
+            console.log(`Candidates with nearUpperWeight: ${withUpper.map(c => c.name).join(', ')}`);
             const pickFrom = withUpper.length ? withUpper : close;
+            console.log(`Picking from: ${pickFrom.map(c => c.name).join(', ')}`);
             // among close ones, prefer larger size
             pickFrom.sort((a,b) => order.indexOf(a.name) - order.indexOf(b.name));
             const chosen = pickFrom[pickFrom.length - 1];
+            console.log(`=== SELECTED: ${chosen.name} with score ${chosen.score.toFixed(3)} ===`);
             bestSize = chosen.name;
             bestScore = chosen.score;
           }
