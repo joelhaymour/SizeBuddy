@@ -37,6 +37,54 @@ import { useNavigate } from 'react-router-dom';
 import { useAppBridge } from '@shopify/app-bridge-react';
 import { useTranslation } from 'react-i18next';
 
+// Helper function to calculate score range for tops
+function calculateScoreRange(height, weight, fitType) {
+  if (!height || !weight) return null;
+  
+  // Parse height and weight ranges
+  const heightRange = height.includes('-') 
+    ? height.split('-').map(h => {
+        // Handle feet'inches" format
+        const match = h.trim().match(/(\d+)'(\d+)"/);
+        if (match) {
+          return parseInt(match[1]) * 12 + parseInt(match[2]);
+        }
+        return parseFloat(h);
+      })
+    : (() => {
+        const match = height.match(/(\d+)'(\d+)"/);
+        if (match) {
+          const val = parseInt(match[1]) * 12 + parseInt(match[2]);
+          return [val, val];
+        }
+        return [parseFloat(height), parseFloat(height)];
+      })();
+    
+  const weightRange = weight.includes('-')
+    ? weight.split('-').map(w => parseFloat(w.replace(/\s?lbs?/g, '').trim()))
+    : [parseFloat(weight.replace(/\s?lbs?/g, '').trim()), parseFloat(weight.replace(/\s?lbs?/g, '').trim())];
+    
+  if (heightRange.some(isNaN) || weightRange.some(isNaN)) return null;
+  
+  // Get minimum and maximum scores
+  const minScore = heightRange[0] + weightRange[0];
+  const maxScore = heightRange[1] + weightRange[1];
+  
+  // Apply fit type adjustments
+  let adjustedMinScore = minScore;
+  let adjustedMaxScore = maxScore;
+  
+  if (fitType === 'slim') {
+    adjustedMinScore = minScore - 10;
+    adjustedMaxScore = maxScore - 10;
+  } else if (fitType === 'loose') {
+    adjustedMinScore = minScore + 10;
+    adjustedMaxScore = maxScore + 10;
+  }
+  
+  return `${Math.round(adjustedMinScore)}-${Math.round(adjustedMaxScore)}`;
+}
+
 export function SizeRecommendation({ shop, host }) {
   const navigate = useNavigate();
   const app = useAppBridge();
@@ -501,6 +549,22 @@ export function SizeRecommendation({ shop, host }) {
       // Debug product images before saving
       console.log('=== PRODUCTS BEFORE SAVING ===');
       debugProductImages(selectedProducts);
+
+      // *** CRITICAL FIX: Calculate scores for all sizes before saving (for tops) ***
+      if ((selectedCategory === 'tops' || selectedCategory === 'Tops') && processedSizeRecommendation.sizes) {
+        processedSizeRecommendation.sizes = processedSizeRecommendation.sizes.map(size => {
+          const updatedSize = { ...size };
+          // Calculate score if height and weight are present but score is missing
+          if (updatedSize.height && updatedSize.weight && !updatedSize.score) {
+            const scoreRange = calculateScoreRange(updatedSize.height, updatedSize.weight, selectedFitType);
+            if (scoreRange) {
+              updatedSize.score = scoreRange;
+              console.log(`Calculated score for size ${updatedSize.size || updatedSize.name}: ${scoreRange}`);
+            }
+          }
+          return updatedSize;
+        });
+      }
 
       // Ensure full shop domain is used
       const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;

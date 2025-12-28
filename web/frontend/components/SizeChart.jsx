@@ -393,12 +393,29 @@ export function SizeRecommendation({ shop, host }) {
       console.log('=== PRODUCTS BEFORE SAVING ===');
       debugProductImages(selectedProducts);
 
+      // *** CRITICAL FIX: Calculate scores for all sizes before saving (for tops) ***
+      let chartDataToSave = { ...currentSizeChart };
+      if (selectedCategory === 'tops' && chartDataToSave.sizes) {
+        chartDataToSave.sizes = chartDataToSave.sizes.map(size => {
+          const updatedSize = { ...size };
+          // Calculate score if height and weight are present but score is missing
+          if (updatedSize.height && updatedSize.weight && !updatedSize.score) {
+            const scoreRange = calculateScoreRange(updatedSize.height, updatedSize.weight, selectedFitType);
+            if (scoreRange) {
+              updatedSize.score = scoreRange;
+              console.log(`Calculated score for size ${updatedSize.size}: ${scoreRange}`);
+            }
+          }
+          return updatedSize;
+        });
+      }
+
       const requestData = {
         shop,
         chart_name: chartName,
         category: selectedCategory,
         fit_type: selectedFitType,
-        chart_data: currentSizeChart,
+        chart_data: chartDataToSave,
         products: selectedProducts.map(product => ({
           id: product.id,
           title: product.title,
