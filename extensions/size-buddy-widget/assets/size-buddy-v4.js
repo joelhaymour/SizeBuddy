@@ -28,8 +28,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // IMPORTANT: Force replace any existing content with our button and modal
   // This ensures the widget displays correctly regardless of initial HTML
   widget.innerHTML = `
-    <button id="size-buddy-toggle-btn" class="size-buddy-toggle-btn">Size Buddy</button>
-    <div id="size-buddy-modal" class="size-buddy-modal">
+    <button id="size-buddy-toggle-btn" class="size-buddy-toggle-btn" type="button">Size Buddy</button>
+    <div id="size-buddy-modal" class="size-buddy-modal" style="display: none;">
       <div class="size-buddy-modal-content">
         <span class="size-buddy-close">&times;</span>
         <div class="size-buddy-content"></div>
@@ -37,11 +37,13 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
   `;
   
-  // Get the content container
-  const contentContainer = widget.querySelector('.size-buddy-content');
-  const toggleButton = document.getElementById('size-buddy-toggle-btn');
-  const modal = document.getElementById('size-buddy-modal');
-  const closeButton = widget.querySelector('.size-buddy-close');
+  // Small delay to ensure DOM is updated
+  setTimeout(function() {
+    // Get the content container
+    const contentContainer = widget.querySelector('.size-buddy-content');
+    const toggleButton = document.getElementById('size-buddy-toggle-btn');
+    const modal = document.getElementById('size-buddy-modal');
+    const closeButton = widget.querySelector('.size-buddy-close');
   
   if (!contentContainer) {
     console.error('Size Buddy: Content container not found!');
@@ -73,12 +75,15 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // Close the modal when clicking outside of it
-  window.addEventListener('click', function(event) {
-    if (event.target === modal) {
-      modal.style.display = 'none';
-    }
-  });
+    // Close the modal when clicking outside of it
+    window.addEventListener('click', function(event) {
+      if (event.target === modal) {
+        modal.style.display = 'none';
+      }
+    });
+    
+    console.log('Size Buddy: Event listeners attached successfully');
+  }, 10); // Small delay to ensure DOM is ready
   
   // Function to load size recommendations
   async function loadSizeRecommendations() {
