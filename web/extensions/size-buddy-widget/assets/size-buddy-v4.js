@@ -1005,9 +1005,24 @@
               if (!isNaN(wMin) && !isNaN(wMax)) {
                 const half = ((wMax - wMin) || 1) / 2;
                 const center = (wMin + wMax) / 2;
-                const base = Math.max(0, 1 - (Math.abs(weightLbs - center) / half));
                 const inside = weightLbs >= wMin && weightLbs <= wMax;
-                wScore = inside ? (0.6 + 0.4 * base) : base * 0.5;
+                
+                if (inside) {
+                  // Weight is within range - calculate score based on distance from center
+                  const base = Math.max(0, 1 - (Math.abs(weightLbs - center) / half));
+                  wScore = 0.6 + 0.4 * base;
+                } else if (weightLbs > wMax) {
+                  // Weight exceeds maximum - heavily penalize (size is too small)
+                  // Penalty increases the further above the max
+                  const excess = weightLbs - wMax;
+                  const range = wMax - wMin;
+                  const excessRatio = excess / (range || 1);
+                  wScore = Math.max(0, 0.3 - (excessRatio * 0.3)); // Penalty: 0.3 down to 0
+                } else {
+                  // Weight is below minimum - small penalty
+                  const base = Math.max(0, 1 - (Math.abs(weightLbs - center) / half));
+                  wScore = base * 0.5;
+                }
               }
             }
 
