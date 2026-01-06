@@ -78,20 +78,35 @@
     modal.style.backgroundColor = 'rgba(0,0,0,0.6)';
     modal.style.backdropFilter = 'blur(3px)';
     modal.style.transition = 'opacity 0.3s ease';
+    modal.style.padding = '20px';
+    modal.style.boxSizing = 'border-box';
     
     const modalContent = document.createElement('div');
     modalContent.style.backgroundColor = 'white';
-    modalContent.style.margin = '5% auto';
-    modalContent.style.padding = '30px';
+    modalContent.style.margin = '2% auto';
+    modalContent.style.padding = '25px';
     modalContent.style.border = 'none';
     modalContent.style.width = '90%';
-    modalContent.style.maxWidth = '600px';
+    modalContent.style.maxWidth = '700px';
+    modalContent.style.maxHeight = '90vh';
     modalContent.style.borderRadius = '10px';
     modalContent.style.position = 'relative';
     modalContent.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)';
     modalContent.style.transition = 'transform 0.3s ease';
     modalContent.style.transform = 'translateY(20px)';
     modalContent.style.opacity = '0';
+    modalContent.style.overflowY = 'auto';
+    modalContent.style.boxSizing = 'border-box';
+    
+    // Responsive styles for mobile
+    if (window.innerWidth <= 600) {
+      modal.style.padding = '10px';
+      modalContent.style.width = '95%';
+      modalContent.style.maxWidth = '95%';
+      modalContent.style.margin = '5% auto';
+      modalContent.style.padding = '20px';
+      modalContent.style.maxHeight = '85vh';
+    }
     
     // Add animation when modal opens
     modal.addEventListener('click', function(e) {
