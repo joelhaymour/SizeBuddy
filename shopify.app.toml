@@ -1,6 +1,6 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "2f04ec2176fa381f9554da22c41aebb0"
+client_id = "022970402fe6201f671a1fffed454974"
 application_url = "https://sizebuddy.onrender.com"
 embedded = true
 name = "size-buddy"
