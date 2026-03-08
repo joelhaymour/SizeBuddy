@@ -42,7 +42,7 @@
     button.style.color = buttonTextColor || autoText;
     button.style.padding = '12px 20px';
     button.style.border = 'none';
-    button.style.borderRadius = '6px';
+    button.style.borderRadius = '16px';
     button.style.cursor = 'pointer';
     button.style.margin = '15px 0';
     button.style.fontWeight = '600';
@@ -89,7 +89,7 @@
     modalContent.style.width = '90%';
     modalContent.style.maxWidth = '700px';
     modalContent.style.maxHeight = '90vh';
-    modalContent.style.borderRadius = '10px';
+    modalContent.style.borderRadius = '24px';
     modalContent.style.position = 'relative';
     modalContent.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)';
     modalContent.style.transition = 'transform 0.3s ease';
@@ -145,6 +145,12 @@
     closeBtn.style.padding = '0';
     closeBtn.style.lineHeight = '1';
     closeBtn.style.transition = 'color 0.3s ease';
+    closeBtn.style.width = '40px';
+    closeBtn.style.height = '40px';
+    closeBtn.style.display = 'inline-flex';
+    closeBtn.style.alignItems = 'center';
+    closeBtn.style.justifyContent = 'center';
+    closeBtn.style.borderRadius = '50%';
     
     closeBtn.addEventListener('mouseover', function() {
       this.style.color = '#333';
@@ -339,14 +345,23 @@
       try {
         // Add timestamp to prevent caching
         const timestamp = Date.now();
-        // Use current domain (handles custom domains like rouqegolf.com)
         const currentDomain = window.location.hostname;
+        const resolvedShopDomain = shopDomain ||
+          (window.Shopify && window.Shopify.shop) ||
+          document.documentElement.getAttribute('data-shop-domain') ||
+          currentDomain;
         // Preferred: use app proxy (works in production, signed by Shopify)
-        const proxyUrl = 'https://' + currentDomain + '/apps/size-buddy/size-charts?product_id=' + productId + '&_=' + timestamp;
+        // Include shop so backend always has it even when the proxy drops it
+        const proxyParams = new URLSearchParams({
+          product_id: String(productId),
+          shop: resolvedShopDomain,
+          _: String(timestamp)
+        });
+        const proxyUrl = '/apps/size-buddy/size-charts?' + proxyParams.toString();
         // Fallback (public, read-only): server public endpoint
-        const directUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com') + '/public/size-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
+        const directUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com') + '/public/size-charts?product_id=' + productId + '&shop=' + encodeURIComponent(resolvedShopDomain) + '&_=' + timestamp;
         
-        console.log('Fetching size data from:', proxyUrl);
+        console.log('Fetching size data from:', proxyUrl, 'resolved shop:', resolvedShopDomain);
         
         let response = await fetch(proxyUrl);
         if (!response.ok) {

@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import crypto from 'crypto';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
 // Verify the app proxy signature
@@ -70,6 +74,23 @@ router.get('/test', async (req, res) => {
   });
 });
 }
+
+// Serve widget script via app proxy – no signature check so the script always loads (script is public; data endpoints still require signature)
+router.get('/widget.js', (req, res) => {
+  const scriptPath = path.join(__dirname, '..', '..', 'extensions', 'size-buddy-widget', 'assets', 'size-buddy-v4.js');
+  try {
+    const script = readFileSync(scriptPath, 'utf8');
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(script);
+  } catch (err) {
+    console.error('Error serving widget.js via app proxy:', err);
+    res.status(500).send('Error loading widget script');
+  }
+});
 
 // Get size recommendation for a product
 router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req, res) => {
@@ -441,14 +462,36 @@ router.post('/api/proxy/log-recommendation', verifyAppProxySignature, async (req
 // Get size chart data for a product (main endpoint for widget)
 router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
   const { product_id } = req.query;
-  // Derive shop from query or headers (Shopify app proxy often omits explicit shop param)
-  const headerHost = req.headers['x-forwarded-host'] || req.headers['x-shopify-shop-domain'] || req.headers['x-shopify-shop-domain'];
-  const shop = req.query.shop || (typeof headerHost === 'string' ? headerHost : (Array.isArray(headerHost) ? headerHost[0] : undefined));
+  const normalizeHeaderHost = (value) => {
+    const raw = Array.isArray(value) ? value[0] : value;
+    return typeof raw === 'string' ? raw.split(',')[0].trim() : undefined;
+  };
+  // Shop: Shopify adds it to query when proxying; fallbacks: forwarded headers, then Referer host
+  const forwardedHost = normalizeHeaderHost(req.headers['x-forwarded-host']);
+  const shopifyShopDomain = normalizeHeaderHost(req.headers['x-shopify-shop-domain']);
+  let shop = (Array.isArray(req.query.shop) ? req.query.shop[0] : req.query.shop) || shopifyShopDomain || forwardedHost;
+  
+  if (!shop && req.headers['referer']) {
+    try {
+      const refererUrl = new URL(req.headers['referer']);
+      const host = refererUrl.hostname || refererUrl.host;
+      if (host && (host.endsWith('.myshopify.com') || host.includes('myshopify.com'))) {
+        shop = host;
+      } else if (host) {
+        shop = host; // custom domain – use as-is for DB lookup
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
   
   console.log('App Proxy size-charts route hit:', {
     path: req.path,
     query: req.query,
-    originalUrl: req.originalUrl
+    'x-forwarded-host': forwardedHost,
+    'x-shopify-shop-domain': shopifyShopDomain,
+    referer: req.headers['referer'],
+    resolvedShop: shop
   });
   
   if (!product_id) {
@@ -456,16 +499,16 @@ router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
   }
   
   if (!shop) {
-    return res.status(400).json({ error: 'Missing shop parameter' });
+    return res.status(400).json({ error: 'Missing shop parameter (ensure app proxy URL includes /app-proxy and request is proxied by Shopify)' });
   }
   
+  const shopDomain = shop.includes('.myshopify.com') ? shop : shop.replace(/^https?:\/\//, '').split('/')[0];
+  
   try {
-    console.log(`Fetching size chart for product ${product_id} in shop ${shop}`);
-    
     // Find charts associated with this product - get the most recent one
     const productChart = await req.app.locals.db.get(
       `SELECT * FROM product_charts WHERE product_id = ? AND shop_domain = ? ORDER BY created_at DESC LIMIT 1`,
-      [product_id, shop]
+      [product_id, shopDomain]
     );
     
     console.log('Product chart query result:', { productChart });
@@ -479,11 +522,11 @@ router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
     const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
     const chart = await req.app.locals.db.get(
       `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`,
-      [productChart.chart_id, shop]
+      [productChart.chart_id, shopDomain]
     );
     
     if (!chart) {
-      console.log(`Chart with ID ${productChart.chart_id} not found for shop ${shop}`);
+      console.log(`Chart with ID ${productChart.chart_id} not found for shop ${shopDomain}`);
       return res.json({ found: false, error: 'Size chart not found' });
     }
     

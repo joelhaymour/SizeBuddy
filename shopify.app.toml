@@ -3,8 +3,8 @@
 client_id = "022970402fe6201f671a1fffed454974"
 application_url = "https://31f74bcd7f90.ngrok.app"
 embedded = true
-name = "size-buddy"
-handle = "size-buddy-v6-testing"
+name = "size-buddy-dev"
+handle = "size-buddy-dev"
 
 [build]
 automatically_update_urls_on_dev = true
@@ -30,6 +30,6 @@ redirect_urls = [
 embedded = false
 
 [app_proxy]
-  url = "https://31f74bcd7f90.ngrok.app"
+  url = "/app-proxy"
 prefix = "apps"
 subpath = "size-buddy"

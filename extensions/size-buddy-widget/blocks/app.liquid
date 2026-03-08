@@ -11,9 +11,9 @@
       const existingScripts = document.querySelectorAll('script[src*="size-buddy"]');
       existingScripts.forEach(script => script.remove());
       
-      // Load the Size Buddy widget script with cache-busting parameter
+      // Load the bundled theme app extension asset directly from Shopify CDN
       const script = document.createElement('script');
-      script.src = 'https://sizebuddy.onrender.com/widget-script?v=4.0.0&_=' + Date.now();
+      script.src = '{{ "size-buddy-v4.js" | asset_url }}';
       script.async = true;
       
       // Add load event listener to ensure script is fully loaded
