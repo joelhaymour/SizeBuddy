@@ -1,4 +1,4 @@
-<div class="size-buddy-widget" id="size-buddy-widget" data-product-id="{{ product.id }}" data-shop-domain="{{ shop.permanent_domain }}" data-button-color="{{ block.settings.button_color }}" data-button-text-color="{{ block.settings.button_text_color }}">
+<div class="size-buddy-widget" id="size-buddy-widget" data-product-id="{{ product.id }}" data-shop-domain="{{ shop.permanent_domain }}" data-button-color="{{ block.settings.button_color }}" data-button-text-color="{{ block.settings.button_text_color }}"{% if block.settings.backend_url != blank %} data-backend-url="{{ block.settings.backend_url }}"{% endif %}>
   <button class="size-buddy-button">Size Buddy</button>
   <div class="size-buddy-content"></div>
 </div>
@@ -12,8 +12,9 @@
       existingScripts.forEach(script => script.remove());
       
       // Load the bundled theme app extension asset directly from Shopify CDN
+      {% assign sb_asset = "size-buddy-v4.js" | asset_url %}
       const script = document.createElement('script');
-      script.src = '{{ "size-buddy-v4.js" | asset_url }}';
+      script.src = '{{ sb_asset }}' + ('{{ sb_asset }}'.indexOf('?') >= 0 ? '&' : '?') + 'v=sliderbar';
       script.async = true;
       
       // Add load event listener to ensure script is fully loaded
@@ -57,6 +58,13 @@
       "id": "button_text_color",
       "label": "Find My Size text color",
       "default": "#FFFFFF"
+    },
+    {
+      "type": "text",
+      "id": "backend_url",
+      "label": "Backend URL (for local testing)",
+      "info": "Default uses production. When testing with ngrok, set to your ngrok URL (e.g. https://xxxx.ngrok.app) so the fallback uses your local data.",
+      "default": "https://sizebuddy.onrender.com"
     }
   ]
 }

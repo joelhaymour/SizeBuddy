@@ -497,6 +497,29 @@ app.get('/public/size-charts', async (req, res) => {
 
 // Test endpoint to debug chart lookup (development only)
 if (process.env.NODE_ENV === 'development') {
+// Debug: list where size charts are stored and what's in the DB for a shop
+app.get("/api/debug/size-charts-db", async (req, res) => {
+  const { shop } = req.query;
+  if (!shop) return res.status(400).json({ error: 'Add ?shop=sizemeup111.myshopify.com' });
+  try {
+    const db = req.app.locals.db;
+    const dbPath = join(process.cwd(), 'database.sqlite');
+    const sizeCharts = await db.all(`SELECT id, name, category, shop_domain, created_at FROM size_charts WHERE shop_domain = ?`, [shop]);
+    const productCharts = await db.all(`SELECT * FROM product_charts WHERE shop_domain = ?`, [shop]);
+    return res.json({
+      message: 'Size charts for testing are stored in SQLite (dev) or Postgres (prod).',
+      dbPath,
+      shop,
+      sizeChartsCount: sizeCharts.length,
+      sizeCharts,
+      productChartsCount: productCharts.length,
+      productCharts
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/test-chart-lookup", async (req, res) => {
   const { product_id, shop } = req.query;
   

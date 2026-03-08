@@ -197,10 +197,11 @@
       return score;
     }
     
-    // Add slider styles
+    // Add slider styles (scoped to modal content so theme CSS cannot override)
     const styleEl = document.createElement('style');
+    styleEl.id = 'size-buddy-slider-styles';
     styleEl.textContent = `
-      .size-slider-container {
+      #size-buddy-content .size-slider-container {
         margin-bottom: 25px !important;
       }
       
@@ -227,64 +228,75 @@
         text-align: center !important;
       }
       
-      .slider-container {
+      #size-buddy-content .slider-container {
         position: relative !important;
         height: 40px !important;
         width: 100% !important;
+        overflow: visible !important;
       }
       
-      .slider-track {
+      #size-buddy-content .slider-track {
         position: absolute !important;
         top: 50% !important;
         left: 0 !important;
         right: 0 !important;
         transform: translateY(-50%) !important;
         width: 100% !important;
-        height: 6px !important;
-        background-color: #e0e0e0 !important;
-        border-radius: 3px !important;
+        height: 8px !important;
+        background-color: #d8d8d8 !important;
+        border-radius: 4px !important;
         z-index: 0 !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: none !important;
       }
       
-      .slider-filled {
+      #size-buddy-content .slider-filled {
         position: absolute !important;
         top: 50% !important;
         left: 0 !important;
         transform: translateY(-50%) !important;
-        height: 6px !important;
+        height: 8px !important;
+        min-width: 4px !important;
         background-color: #4A90E2 !important;
-        border-radius: 3px !important;
+        border-radius: 4px !important;
         z-index: 1 !important;
+        transition: width 0.15s ease !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: none !important;
       }
       
-      .slider-handle {
+      #size-buddy-content .slider-handle {
         position: absolute !important;
         top: 50% !important;
         transform: translate(-50%, -50%) !important;
-        width: 22px !important;
-        height: 22px !important;
+        width: 24px !important;
+        height: 24px !important;
         background-color: white !important;
         border: 2px solid #4A90E2 !important;
         border-radius: 50% !important;
         cursor: pointer !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
         z-index: 2 !important;
         display: block !important;
       }
       
-      .slider-handle:hover {
-        transform: translate(-50%, -50%) scale(1.1) !important;
-        box-shadow: 0 3px 8px rgba(0,0,0,0.2) !important;
+      #size-buddy-content .slider-handle:hover {
+        transform: translate(-50%, -50%) scale(1.08) !important;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2) !important;
       }
       
-      .slider-ticks {
+      #size-buddy-content .slider-ticks {
         position: absolute !important;
         top: 50% !important;
         left: 0 !important;
         right: 0 !important;
         transform: translateY(-50%) !important;
         width: 100% !important;
-        height: 6px !important;
+        height: 8px !important;
         display: flex !important;
         justify-content: space-between !important;
         pointer-events: none !important;
@@ -304,6 +316,16 @@
         margin-top: 5px !important;
         font-size: 12px !important;
         color: #666 !important;
+      }
+      
+      .size-buddy-modal-submit:hover {
+        background-color: #3a7bc8 !important;
+        box-shadow: 0 4px 12px rgba(74,144,226,0.4) !important;
+        transform: translateY(-1px);
+      }
+      
+      .size-buddy-modal-submit:active {
+        transform: translateY(0);
       }
     `;
     document.head.appendChild(styleEl);
@@ -590,11 +612,11 @@
                      data-max="${max}"
                      data-height-values='${JSON.stringify(displayHeights)}'
                      style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">
-                  <div class="slider-track"></div>
-                  <div class="slider-filled" style="width:${initialPercent}%"></div>
-                  <div class="slider-handle" style="left:${initialPercent}%"></div>
-                  <div class="slider-ticks">
-                    ${displayHeights.map(() => '<div class="tick"></div>').join('')}
+                  <div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:#d8d8d8;border-radius:4px;z-index:0;"></div>
+                  <div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:${initialPercent}%;background-color:#4A90E2;border-radius:4px;z-index:1;"></div>
+                  <div class="slider-handle" style="position:absolute;top:50%;left:${initialPercent}%;transform:translate(-50%,-50%);width:24px;height:24px;background-color:#fff;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;"></div>
+                  <div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">
+                    ${displayHeights.map(() => '<div class="tick" style="width:2px;height:10px;background-color:#ccc;border-radius:1px;"></div>').join('')}
                   </div>
                 </div>
                 <div class="slider-labels" style="display:flex;justify-content:space-between;margin-top:5px;">
@@ -620,12 +642,12 @@
                 '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + cupSizes[initialValue] + '</div>' +
               '</div>' +
               '<div class="slider-container cup-size-container" data-min="0" data-max="' + maxValue + '" data-sizes="' + cupSizes.join(',') + '" style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">' +
-                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:6px;background-color:#e0e0e0;border-radius:3px;z-index:1;"></div>' +
-                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:6px;width:0%;background-color:#4A90E2;border-radius:3px;z-index:2;"></div>' +
-                '<div class="slider-handle" style="position:absolute;top:50%;left:0%;transform:translate(-50%, -50%);width:22px;height:22px;background-color:white;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1);z-index:3;display:block;"></div>';
+                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:#d8d8d8;border-radius:4px;z-index:0;"></div>' +
+                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:' + (maxValue > 0 ? (initialValue / maxValue * 100) : 0) + '%;background-color:#4A90E2;border-radius:4px;z-index:1;"></div>' +
+                '<div class="slider-handle" style="position:absolute;top:50%;left:' + (maxValue > 0 ? (initialValue / maxValue * 100) : 0) + '%;transform:translate(-50%, -50%);width:24px;height:24px;background-color:white;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;display:block;"></div>';
             
             // Add ticks for each cup size
-            formHtml += '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:6px;display:flex;justify-content:space-between;pointer-events:none;z-index:1;">';
+            formHtml += '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">';
             for (let i = 0; i <= maxValue; i++) {
               formHtml += '<div style="width:4px;height:10px;background-color:#ccc;border-radius:2px;"></div>';
             }
@@ -671,10 +693,10 @@
                 '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" data-value="' + measurement.defaultValue + '" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + displayDefaultValue + '</div>' +
               '</div>' +
               '<div class="slider-container" data-min="' + measurement.min + '" data-max="' + measurement.max + '" style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">' +
-                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:6px;background-color:#e0e0e0;border-radius:3px;z-index:1;"></div>' +
-                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:6px;width:' + initialPercent + '%;background-color:#4A90E2;border-radius:3px;z-index:2;"></div>' +
-                '<div class="slider-handle" style="position:absolute;top:50%;left:' + initialPercent + '%;transform:translate(-50%, -50%);width:22px;height:22px;background-color:white;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1);z-index:3;display:block;"></div>' +
-                '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:6px;display:flex;justify-content:space-between;pointer-events:none;z-index:1;">' + ticksHtml + '</div>' +
+                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:#d8d8d8;border-radius:4px;z-index:0;"></div>' +
+                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:' + initialPercent + '%;background-color:#4A90E2;border-radius:4px;z-index:1;"></div>' +
+                '<div class="slider-handle" style="position:absolute;top:50%;left:' + initialPercent + '%;transform:translate(-50%, -50%);width:24px;height:24px;background-color:white;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;display:block;"></div>' +
+                '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">' + ticksHtml + '</div>' +
               '</div>' +
               '<div class="slider-labels" style="display:flex;justify-content:space-between;margin-top:5px;">' + labelsHtml + '</div>' +
             '</div>';
@@ -684,8 +706,8 @@
         // Add button
         formHtml += '<div class="size-buddy-form-group" style="margin-top:30px;">' +
                    '<button id="size-buddy-get-recommendation" ' +
-                   'class="size-buddy-button" ' +
-                   'style="width:100%;padding:15px;background-color:#4A90E2;color:white;border:none;border-radius:8px;font-size:16px;font-weight:500;cursor:pointer;transition:background-color 0.2s;">' +
+                   'class="size-buddy-button size-buddy-modal-submit" ' +
+                   'style="width:100%;padding:16px 24px;background-color:#4A90E2;color:white;border:none;border-radius:16px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.2s ease;box-shadow:0 2px 8px rgba(74,144,226,0.3);">' +
                    'Find My Size' +
                    '</button>' +
                    '</div>';
@@ -1590,11 +1612,11 @@
                  data-max="${max}"
                  data-height-values='${JSON.stringify(heightValues)}'
                  style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">
-              <div class="slider-track"></div>
-              <div class="slider-filled" style="width:${initialPercent}%"></div>
-              <div class="slider-handle" style="left:${initialPercent}%"></div>
-              <div class="slider-ticks">
-                ${heightValues.map(() => '<div class="tick"></div>').join('')}
+              <div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:#d8d8d8;border-radius:4px;z-index:0;"></div>
+              <div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:${initialPercent}%;background-color:#4A90E2;border-radius:4px;z-index:1;"></div>
+              <div class="slider-handle" style="position:absolute;top:50%;left:${initialPercent}%;transform:translate(-50%,-50%);width:24px;height:24px;background-color:#fff;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;"></div>
+              <div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">
+                ${heightValues.map(() => '<div class="tick" style="width:2px;height:10px;background-color:#ccc;border-radius:1px;"></div>').join('')}
               </div>
             </div>
             <div class="slider-labels" style="display:flex;justify-content:space-between;margin-top:5px;">

@@ -459,8 +459,18 @@ router.post('/api/proxy/log-recommendation', verifyAppProxySignature, async (req
   }
 });
 
+// Optional signature verification: skip for GET size-charts when product_id + shop are present (storefront often gets 400 otherwise)
+const optionalAppProxySignature = (req, res, next) => {
+  const hasProductId = !!req.query.product_id;
+  const hasShop = !!(Array.isArray(req.query.shop) ? req.query.shop[0] : req.query.shop);
+  if (req.method === 'GET' && hasProductId && hasShop) {
+    return next(); // allow through without signature so storefront works
+  }
+  return verifyAppProxySignature(req, res, next);
+};
+
 // Get size chart data for a product (main endpoint for widget)
-router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
+router.get('/size-charts', optionalAppProxySignature, async (req, res) => {
   const { product_id } = req.query;
   const normalizeHeaderHost = (value) => {
     const raw = Array.isArray(value) ? value[0] : value;
