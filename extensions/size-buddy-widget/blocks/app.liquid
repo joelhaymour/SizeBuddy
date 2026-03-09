@@ -1,4 +1,4 @@
-<div class="size-buddy-widget" id="size-buddy-widget" data-product-id="{{ product.id }}" data-shop-domain="{{ shop.permanent_domain }}" data-button-color="{{ block.settings.button_color }}" data-button-text-color="{{ block.settings.button_text_color }}"{% if block.settings.backend_url != blank %} data-backend-url="{{ block.settings.backend_url }}"{% endif %}>
+<div class="size-buddy-widget" id="size-buddy-widget" data-product-id="{{ product.id }}" data-shop-domain="{{ shop.permanent_domain }}" data-button-color="{{ block.settings.button_color }}" data-button-text-color="{{ block.settings.button_text_color }}" data-slider-track-color="{{ block.settings.slider_track_color }}" data-slider-fill-color="{{ block.settings.slider_fill_color }}"{% if block.settings.backend_url != blank %} data-backend-url="{{ block.settings.backend_url }}"{% endif %}>
   <button class="size-buddy-button">Size Buddy</button>
   <div class="size-buddy-content"></div>
 </div>
@@ -58,6 +58,18 @@
       "id": "button_text_color",
       "label": "Find My Size text color",
       "default": "#FFFFFF"
+    },
+    {
+      "type": "color",
+      "id": "slider_track_color",
+      "label": "Slider track color",
+      "default": "#d8d8d8"
+    },
+    {
+      "type": "color",
+      "id": "slider_fill_color",
+      "label": "Slider fill color",
+      "default": "#4A90E2"
     },
     {
       "type": "text",

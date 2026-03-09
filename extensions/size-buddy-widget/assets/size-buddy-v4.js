@@ -16,6 +16,8 @@
     const shopDomain = widget.getAttribute('data-shop-domain');
     const buttonColor = widget.getAttribute('data-button-color');
     const buttonTextColor = widget.getAttribute('data-button-text-color');
+    const sliderTrackColor = widget.getAttribute('data-slider-track-color') || '#d8d8d8';
+    const sliderFillColor = widget.getAttribute('data-slider-fill-color') || '#4A90E2';
     
     console.log('Size Buddy: Widget attributes found:', { 
       productId, 
@@ -219,9 +221,7 @@
       }
       
       .slider-value {
-        color: #4A90E2 !important;
         font-weight: 600 !important;
-        background-color: #f1f8fe !important;
         padding: 4px 8px !important;
         border-radius: 4px !important;
         min-width: 40px !important;
@@ -243,7 +243,7 @@
         transform: translateY(-50%) !important;
         width: 100% !important;
         height: 8px !important;
-        background-color: #d8d8d8 !important;
+        background-color: ${sliderTrackColor} !important;
         border-radius: 4px !important;
         z-index: 0 !important;
         display: block !important;
@@ -259,7 +259,7 @@
         transform: translateY(-50%) !important;
         height: 8px !important;
         min-width: 4px !important;
-        background-color: #4A90E2 !important;
+        background-color: ${sliderFillColor} !important;
         border-radius: 4px !important;
         z-index: 1 !important;
         transition: width 0.15s ease !important;
@@ -276,7 +276,7 @@
         width: 24px !important;
         height: 24px !important;
         background-color: white !important;
-        border: 2px solid #4A90E2 !important;
+        border: 2px solid ${sliderFillColor} !important;
         border-radius: 50% !important;
         cursor: pointer !important;
         box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
@@ -319,8 +319,7 @@
       }
       
       .size-buddy-modal-submit:hover {
-        background-color: #3a7bc8 !important;
-        box-shadow: 0 4px 12px rgba(74,144,226,0.4) !important;
+        opacity: 0.9 !important;
         transform: translateY(-1px);
       }
       
@@ -331,7 +330,7 @@
     document.head.appendChild(styleEl);
     
     // Initial content - will be replaced with actual size form
-    contentDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#666;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#4A90E2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><p style="margin-top:10px;">Loading size recommendations...</p></div>';
+    contentDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#666;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="' + (sliderFillColor || '#4A90E2') + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><p style="margin-top:10px;">Loading size recommendations...</p></div>';
     
     // Append elements
     modalContent.appendChild(closeBtn);
@@ -369,6 +368,12 @@
         const widgetEl = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
         const backendBase = (widgetEl && widgetEl.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
         const backendBaseClean = (backendBase || '').replace(/\/$/, '');
+
+        // Modal/slider colors from block settings (same button colors used for modal button)
+        const modalBtnColor = (widgetEl && widgetEl.getAttribute('data-button-color')) || '#4A90E2';
+        const modalBtnTextColor = (widgetEl && widgetEl.getAttribute('data-button-text-color')) || '#FFFFFF';
+        const sliderTrackColor = (widgetEl && widgetEl.getAttribute('data-slider-track-color')) || '#d8d8d8';
+        const sliderFillColor = (widgetEl && widgetEl.getAttribute('data-slider-fill-color')) || '#4A90E2';
 
         const timestamp = Date.now();
         const currentDomain = window.location.hostname;
@@ -607,7 +612,7 @@
               <div class="size-slider-container" data-measurement="height" style="margin-bottom:25px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                   <span style="font-weight:500;color:#333;font-size:15px;">Height (in)</span>
-                  <div class="slider-value" id="size-buddy-value-height" data-value="${initialValue}" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">
+                  <div class="slider-value" id="size-buddy-value-height" data-value="${initialValue}" style="color:${sliderFillColor};font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">
                     ${formatHeightValue(initialValue)}
                   </div>
                 </div>
@@ -616,9 +621,9 @@
                      data-max="${max}"
                      data-height-values='${JSON.stringify(displayHeights)}'
                      style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">
-                  <div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:#d8d8d8;border-radius:4px;z-index:0;"></div>
-                  <div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:${initialPercent}%;background-color:#4A90E2;border-radius:4px;z-index:1;"></div>
-                  <div class="slider-handle" style="position:absolute;top:50%;left:${initialPercent}%;transform:translate(-50%,-50%);width:24px;height:24px;background-color:#fff;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;"></div>
+                  <div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:${sliderTrackColor};border-radius:4px;z-index:0;"></div>
+                  <div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:${initialPercent}%;background-color:${sliderFillColor};border-radius:4px;z-index:1;"></div>
+                  <div class="slider-handle" style="position:absolute;top:50%;left:${initialPercent}%;transform:translate(-50%,-50%);width:24px;height:24px;background-color:#fff;border:2px solid ${sliderFillColor};border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;"></div>
                   <div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">
                     ${displayHeights.map(() => '<div class="tick" style="width:2px;height:10px;background-color:#ccc;border-radius:1px;"></div>').join('')}
                   </div>
@@ -643,12 +648,12 @@
             formHtml += '<div class="size-slider-container cup-size-slider" data-measurement="' + measurement.id + '" style="margin-bottom:25px;">' +
               '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
                 '<span style="font-weight:500;color:#333;font-size:15px;">' + measurement.name + '</span>' +
-                '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + cupSizes[initialValue] + '</div>' +
+                '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" style="color:' + sliderFillColor + ';font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + cupSizes[initialValue] + '</div>' +
               '</div>' +
               '<div class="slider-container cup-size-container" data-min="0" data-max="' + maxValue + '" data-sizes="' + cupSizes.join(',') + '" style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">' +
-                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:#d8d8d8;border-radius:4px;z-index:0;"></div>' +
-                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:' + (maxValue > 0 ? (initialValue / maxValue * 100) : 0) + '%;background-color:#4A90E2;border-radius:4px;z-index:1;"></div>' +
-                '<div class="slider-handle" style="position:absolute;top:50%;left:' + (maxValue > 0 ? (initialValue / maxValue * 100) : 0) + '%;transform:translate(-50%, -50%);width:24px;height:24px;background-color:white;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;display:block;"></div>';
+                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:' + sliderTrackColor + ';border-radius:4px;z-index:0;"></div>' +
+                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:' + (maxValue > 0 ? (initialValue / maxValue * 100) : 0) + '%;background-color:' + sliderFillColor + ';border-radius:4px;z-index:1;"></div>' +
+                '<div class="slider-handle" style="position:absolute;top:50%;left:' + (maxValue > 0 ? (initialValue / maxValue * 100) : 0) + '%;transform:translate(-50%, -50%);width:24px;height:24px;background-color:white;border:2px solid ' + sliderFillColor + ';border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;display:block;"></div>';
             
             // Add ticks for each cup size
             formHtml += '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">';
@@ -694,12 +699,12 @@
             formHtml += '<div class="size-slider-container" data-measurement="' + measurement.id + '" style="margin-bottom:25px;">' +
               '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
                 '<span style="font-weight:500;color:#333;font-size:15px;">' + measurement.name + (measurement.unit ? ' (' + measurement.unit + ')' : '') + '</span>' +
-                '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" data-value="' + measurement.defaultValue + '" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + displayDefaultValue + '</div>' +
+                '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" data-value="' + measurement.defaultValue + '" style="color:' + sliderFillColor + ';font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + displayDefaultValue + '</div>' +
               '</div>' +
               '<div class="slider-container" data-min="' + measurement.min + '" data-max="' + measurement.max + '" style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">' +
-                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:#d8d8d8;border-radius:4px;z-index:0;"></div>' +
-                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:' + initialPercent + '%;background-color:#4A90E2;border-radius:4px;z-index:1;"></div>' +
-                '<div class="slider-handle" style="position:absolute;top:50%;left:' + initialPercent + '%;transform:translate(-50%, -50%);width:24px;height:24px;background-color:white;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;display:block;"></div>' +
+                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:' + sliderTrackColor + ';border-radius:4px;z-index:0;"></div>' +
+                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:' + initialPercent + '%;background-color:' + sliderFillColor + ';border-radius:4px;z-index:1;"></div>' +
+                '<div class="slider-handle" style="position:absolute;top:50%;left:' + initialPercent + '%;transform:translate(-50%, -50%);width:24px;height:24px;background-color:white;border:2px solid ' + sliderFillColor + ';border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;display:block;"></div>' +
                 '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">' + ticksHtml + '</div>' +
               '</div>' +
               '<div class="slider-labels" style="display:flex;justify-content:space-between;margin-top:5px;">' + labelsHtml + '</div>' +
@@ -707,11 +712,11 @@
           }
         });
         
-        // Add button
+        // Add button (modal "Find My Size" uses same colors as block button settings)
         formHtml += '<div class="size-buddy-form-group" style="margin-top:30px;">' +
                    '<button id="size-buddy-get-recommendation" ' +
                    'class="size-buddy-button size-buddy-modal-submit" ' +
-                   'style="width:100%;padding:16px 24px;background-color:#4A90E2;color:white;border:none;border-radius:16px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.2s ease;box-shadow:0 2px 8px rgba(74,144,226,0.3);">' +
+                   'style="width:100%;padding:16px 24px;background-color:' + modalBtnColor + ';color:' + modalBtnTextColor + ';border:none;border-radius:16px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.2s ease;box-shadow:0 2px 8px rgba(0,0,0,0.15);">' +
                    'Find My Size' +
                    '</button>' +
                    '</div>';
@@ -927,10 +932,11 @@
               opt.style.color = '#333';
             });
             
-            // Highlight selected option
-            this.style.borderColor = '#4A90E2';
+            // Highlight selected option (use slider fill color from widget)
+            const fillColor = (document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]'))?.getAttribute('data-slider-fill-color') || '#4A90E2';
+            this.style.borderColor = fillColor;
             this.style.backgroundColor = '#f1f8fe';
-            this.style.color = '#4A90E2';
+            this.style.color = fillColor;
             
             // Update value display
             valueDisplay.textContent = this.dataset.value;
@@ -1603,11 +1609,15 @@
         const initialValue = Math.round((min + max) / 2);
         const initialPercent = 50; // Start in middle position
         
+        const sbWidgetEl = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
+        const sbTrackColor = (sbWidgetEl && sbWidgetEl.getAttribute('data-slider-track-color')) || '#d8d8d8';
+        const sbFillColor = (sbWidgetEl && sbWidgetEl.getAttribute('data-slider-fill-color')) || '#4A90E2';
+        
         const sliderHtml = `
           <div class="size-slider-container" data-measurement="height" style="margin-bottom:25px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
               <span style="font-weight:500;color:#333;font-size:15px;">Height</span>
-              <div class="slider-value" id="size-buddy-value-height" data-value="${initialValue}" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">
+              <div class="slider-value" id="size-buddy-value-height" data-value="${initialValue}" style="color:${sbFillColor};font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">
                 ${formatHeightValue(initialValue)}
               </div>
             </div>
@@ -1616,9 +1626,9 @@
                  data-max="${max}"
                  data-height-values='${JSON.stringify(heightValues)}'
                  style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">
-              <div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:#d8d8d8;border-radius:4px;z-index:0;"></div>
-              <div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:${initialPercent}%;background-color:#4A90E2;border-radius:4px;z-index:1;"></div>
-              <div class="slider-handle" style="position:absolute;top:50%;left:${initialPercent}%;transform:translate(-50%,-50%);width:24px;height:24px;background-color:#fff;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;"></div>
+              <div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:${sbTrackColor};border-radius:4px;z-index:0;"></div>
+              <div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:${initialPercent}%;background-color:${sbFillColor};border-radius:4px;z-index:1;"></div>
+              <div class="slider-handle" style="position:absolute;top:50%;left:${initialPercent}%;transform:translate(-50%,-50%);width:24px;height:24px;background-color:#fff;border:2px solid ${sbFillColor};border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;"></div>
               <div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">
                 ${heightValues.map(() => '<div class="tick" style="width:2px;height:10px;background-color:#ccc;border-radius:1px;"></div>').join('')}
               </div>
