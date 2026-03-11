@@ -26,6 +26,7 @@ import billingRouter from "./routes/billing.js";
 import appProxyRouter from "./routes/app-proxy.js";
 import GDPRWebhookHandlers from "./gdpr.js";
 import { getDb } from './db.js';
+import { fetchProductVariantsForStorefront } from './utils/productVariants.js';
 
 
 // Load environment variables
@@ -46,7 +47,7 @@ app.use((req, res, next) => {
   if (req.path === (shopify.config?.webhooks?.path || '/api/webhooks')) {
     return next();
   }
-  return express.json()(req, res, next);
+  return express.json({ limit: '10mb' })(req, res, next);
 });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -475,18 +476,27 @@ app.get('/public/size-charts', async (req, res) => {
       return n;
     });
 
+    const productVariants = await fetchProductVariantsForStorefront(shop, product_id);
+    const customSizeChartImage = chart.custom_size_chart_image || null;
+
     res.json({
       found: true,
+      product_variants: productVariants,
       chart: {
         id: chart.id,
         name: chart.name,
         category: chart.category,
         subcategory: chart.subcategory,
         fit_type: chart.fit_type,
+        custom_size_chart_image: customSizeChartImage,
         sizes: chartData.sizes,
         measurements: chartData.measurements || [],
-        chart_data: chartData,
-        optional_measurements: chart.optional_measurements ? JSON.parse(chart.optional_measurements) : {}
+        chart_data: {
+          ...chartData,
+          custom_size_chart_image: customSizeChartImage
+        },
+        optional_measurements: chart.optional_measurements ? JSON.parse(chart.optional_measurements) : {},
+        product_variants: productVariants
       }
     });
   } catch (error) {
@@ -980,6 +990,7 @@ async function initializeDatabase() {
         fit_type TEXT NOT NULL,
         chart_data TEXT NOT NULL,
         optional_measurements TEXT,
+        custom_size_chart_image TEXT,
         locked BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -1010,8 +1021,29 @@ async function initializeDatabase() {
         chart_id INTEGER NOT NULL REFERENCES size_charts(id) ON DELETE CASCADE,
         recommended_size TEXT NOT NULL,
         measurements TEXT NOT NULL,
+        recommendation_token TEXT,
+        availability_status TEXT DEFAULT 'available',
+        variant_id TEXT,
+        added_to_cart_at TIMESTAMPTZ,
         shop TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
+      )`);
+
+      await db.run(`CREATE TABLE IF NOT EXISTS size_buddy_purchase_analytics (
+        id SERIAL PRIMARY KEY,
+        shop TEXT NOT NULL,
+        order_id TEXT NOT NULL,
+        order_name TEXT,
+        line_item_id TEXT NOT NULL,
+        recommendation_token TEXT NOT NULL,
+        product_id TEXT,
+        variant_id TEXT,
+        recommended_size TEXT,
+        quantity INTEGER DEFAULT 1,
+        revenue_amount NUMERIC(12, 2) DEFAULT 0,
+        currency TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT uq_size_buddy_purchase_order_line UNIQUE(order_id, line_item_id)
       )`);
 
       await db.run(`CREATE TABLE IF NOT EXISTS chart_sizes (
@@ -1041,6 +1073,10 @@ async function initializeDatabase() {
       await db.run(`CREATE INDEX IF NOT EXISTS idx_size_charts_shop ON size_charts(shop_domain)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_product_charts_shop ON product_charts(shop_domain)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_reco_shop ON size_recommendation_analytics(shop)`);
+      await db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reco_token_unique ON size_recommendation_analytics(recommendation_token)`);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_reco_availability_status ON size_recommendation_analytics(availability_status)`);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_purchase_analytics_shop_created ON size_buddy_purchase_analytics(shop, created_at)`);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_purchase_analytics_token ON size_buddy_purchase_analytics(recommendation_token)`);
 
       // Ensure category check constraint includes 'bikinis' on existing databases
       try {
@@ -1048,6 +1084,21 @@ async function initializeDatabase() {
         await db.run(`ALTER TABLE size_charts ADD CONSTRAINT size_charts_category_check CHECK (category IN ('tops','bottoms','bikinis','dresses'))`);
       } catch (e) {
         console.warn('Skipping category check constraint update:', e.message || e);
+      }
+
+      try {
+        await db.run(`ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS custom_size_chart_image TEXT`);
+      } catch (e) {
+        console.warn('Skipping custom_size_chart_image column update:', e.message || e);
+      }
+
+      try {
+        await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN IF NOT EXISTS recommendation_token TEXT`);
+        await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN IF NOT EXISTS availability_status TEXT DEFAULT 'available'`);
+        await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN IF NOT EXISTS variant_id TEXT`);
+        await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN IF NOT EXISTS added_to_cart_at TIMESTAMPTZ`);
+      } catch (e) {
+        console.warn('Skipping recommendation analytics column updates:', e.message || e);
       }
     } catch (e) {
       console.error('Postgres schema init error:', e);
@@ -1070,6 +1121,7 @@ async function initializeDatabase() {
       fit_type TEXT NOT NULL,
       chart_data TEXT NOT NULL,
       optional_measurements TEXT,
+      custom_size_chart_image TEXT,
       locked INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -1101,8 +1153,29 @@ async function initializeDatabase() {
       chart_id INTEGER NOT NULL,
       recommended_size TEXT NOT NULL,
       measurements TEXT NOT NULL,
+      recommendation_token TEXT,
+      availability_status TEXT DEFAULT 'available',
+      variant_id TEXT,
+      added_to_cart_at DATETIME,
+      shop TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (chart_id) REFERENCES size_charts(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS size_buddy_purchase_analytics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shop TEXT NOT NULL,
+      order_id TEXT NOT NULL,
+      order_name TEXT,
+      line_item_id TEXT NOT NULL,
+      recommendation_token TEXT NOT NULL,
+      product_id TEXT,
+      variant_id TEXT,
+      recommended_size TEXT,
+      quantity INTEGER DEFAULT 1,
+      revenue_amount REAL DEFAULT 0,
+      currency TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     
     CREATE TABLE IF NOT EXISTS chart_sizes (

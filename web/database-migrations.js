@@ -52,6 +52,51 @@ async function runMigrations() {
       await db.run(`CREATE INDEX IF NOT EXISTS idx_reco_shop ON size_recommendation_analytics(shop)`);
     }
 
+    const recommendationTokenExists = recoInfo.some(c => c.name === 'recommendation_token');
+    if (!recommendationTokenExists) {
+      await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN recommendation_token TEXT`);
+    }
+
+    const availabilityStatusExists = recoInfo.some(c => c.name === 'availability_status');
+    if (!availabilityStatusExists) {
+      await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN availability_status TEXT DEFAULT 'available'`);
+      await db.run(`UPDATE size_recommendation_analytics SET availability_status = 'available' WHERE availability_status IS NULL`);
+    }
+
+    const variantIdExists = recoInfo.some(c => c.name === 'variant_id');
+    if (!variantIdExists) {
+      await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN variant_id TEXT`);
+    }
+
+    const addedToCartAtExists = recoInfo.some(c => c.name === 'added_to_cart_at');
+    if (!addedToCartAtExists) {
+      await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN added_to_cart_at DATETIME`);
+    }
+
+    await db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reco_token_unique ON size_recommendation_analytics(recommendation_token)`);
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_reco_availability_status ON size_recommendation_analytics(availability_status)`);
+
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS size_buddy_purchase_analytics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shop TEXT NOT NULL,
+        order_id TEXT NOT NULL,
+        order_name TEXT,
+        line_item_id TEXT NOT NULL,
+        recommendation_token TEXT NOT NULL,
+        product_id TEXT,
+        variant_id TEXT,
+        recommended_size TEXT,
+        quantity INTEGER DEFAULT 1,
+        revenue_amount REAL DEFAULT 0,
+        currency TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_size_buddy_purchase_order_line ON size_buddy_purchase_analytics(order_id, line_item_id);
+      CREATE INDEX IF NOT EXISTS idx_size_buddy_purchase_shop_created ON size_buddy_purchase_analytics(shop, created_at);
+      CREATE INDEX IF NOT EXISTS idx_size_buddy_purchase_reco_token ON size_buddy_purchase_analytics(recommendation_token);
+    `);
+
     // Check if the columns exist
     const tableInfo = await db.all(`PRAGMA table_info(chart_sizes)`);
     const scoreColumnExists = tableInfo.some(column => column.name === 'score');
@@ -102,6 +147,15 @@ async function runMigrations() {
       console.log('Locked column added successfully.');
     } else {
       console.log('Locked column already exists in size_charts table.');
+    }
+
+    const customSizeChartImageExists = sizeChartsInfo.some(column => column.name === 'custom_size_chart_image');
+    if (!customSizeChartImageExists) {
+      console.log('Adding custom_size_chart_image column to size_charts table...');
+      await db.run(`ALTER TABLE size_charts ADD COLUMN custom_size_chart_image TEXT;`);
+      console.log('custom_size_chart_image column added successfully.');
+    } else {
+      console.log('custom_size_chart_image column already exists in size_charts table.');
     }
 
     console.log('Migrations completed successfully.');

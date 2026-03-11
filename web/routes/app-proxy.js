@@ -2,7 +2,9 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { readFileSync } from 'fs';
 import path from 'path';
+import shopify from '../shopify.js';
 import { fileURLToPath } from 'url';
+import { fetchProductVariantsForStorefront } from '../utils/productVariants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
@@ -149,6 +151,16 @@ router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req
       return res.status(400).send({ error: "Chart data is invalid or empty" });
     }
 
+    const productVariants = await fetchProductVariantsForStorefront(shop, productId);
+    const customSizeChartImage = sizeChart.custom_size_chart_image || null;
+    if (sizeChart.chart_data && typeof sizeChart.chart_data === 'object') {
+      sizeChart.chart_data = {
+        ...sizeChart.chart_data,
+        custom_size_chart_image: customSizeChartImage
+      };
+    }
+    sizeChart.custom_size_chart_image = customSizeChartImage;
+
     // Get widget customization
     const widgetCustomization = await req.app.locals.db.get(
       `SELECT * FROM widget_customization WHERE shop_id = ?`,
@@ -158,6 +170,7 @@ router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req
     // Return the size chart and widget customization
     res.json({
       sizeChart,
+      product_variants: productVariants,
       widgetCustomization: widgetCustomization || {}
     });
   } catch (error) {
@@ -431,24 +444,35 @@ function calculateRecommendedSize(chartData, userMeasurements) {
 
 // New endpoint to log size recommendations for analytics
 router.post('/api/proxy/log-recommendation', verifyAppProxySignature, async (req, res) => {
-  const { shop, product_id, chart_id, recommended_size, measurements } = req.body;
+  const {
+    shop,
+    product_id,
+    chart_id,
+    recommended_size,
+    measurements,
+    recommendation_token,
+    availability_status,
+    variant_id,
+  } = req.body;
 
   if (!shop || !product_id || !chart_id || !recommended_size) {
     return res.status(400).send({ error: "Missing required parameters" });
   }
 
   try {
-    // Log the recommendation
     await req.app.locals.db.run(
-      `INSERT INTO size_recommendation_analytics 
-       (product_id, chart_id, recommended_size, measurements, created_at, shop) 
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
+      `INSERT INTO size_recommendation_analytics
+       (product_id, chart_id, recommended_size, measurements, recommendation_token, availability_status, variant_id, created_at, shop)
+       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
       [
         product_id,
         chart_id,
         recommended_size,
-        JSON.stringify(measurements),
-        shop
+        JSON.stringify(measurements || {}),
+        recommendation_token || null,
+        availability_status || 'available',
+        variant_id || null,
+        shop,
       ]
     );
 
@@ -456,6 +480,45 @@ router.post('/api/proxy/log-recommendation', verifyAppProxySignature, async (req
   } catch (error) {
     console.error('Error logging recommendation:', error);
     res.status(500).send({ error: "Error logging recommendation" });
+  }
+});
+
+router.post('/api/proxy/log-add-to-cart', verifyAppProxySignature, async (req, res) => {
+  const { shop, recommendation_token, variant_id, product_id, chart_id, recommended_size } = req.body;
+
+  if (!shop || !recommendation_token) {
+    return res.status(400).send({ error: "Missing required parameters" });
+  }
+
+  try {
+    let result = await req.app.locals.db.run(
+      `UPDATE size_recommendation_analytics
+       SET added_to_cart_at = CURRENT_TIMESTAMP,
+           variant_id = COALESCE(?, variant_id)
+       WHERE shop = ? AND recommendation_token = ?`,
+      [variant_id || null, shop, recommendation_token]
+    );
+
+    if ((!result?.changes || Number(result.changes) === 0) && product_id && chart_id && recommended_size) {
+      result = await req.app.locals.db.run(
+        `UPDATE size_recommendation_analytics
+         SET added_to_cart_at = CURRENT_TIMESTAMP,
+             variant_id = COALESCE(?, variant_id),
+             recommendation_token = COALESCE(recommendation_token, ?)
+         WHERE id = (
+           SELECT id FROM size_recommendation_analytics
+           WHERE shop = ? AND product_id = ? AND chart_id = ? AND recommended_size = ?
+           ORDER BY created_at DESC
+           LIMIT 1
+         )`,
+        [variant_id || null, recommendation_token, shop, product_id, chart_id, recommended_size]
+      );
+    }
+
+    res.status(200).send({ success: true, updated: Number(result?.changes || 0) });
+  } catch (error) {
+    console.error('Error logging add to cart:', error);
+    res.status(500).send({ error: "Error logging add to cart" });
   }
 });
 
@@ -644,18 +707,26 @@ router.get('/size-charts', optionalAppProxySignature, async (req, res) => {
     });
     
     // Prepare the response
+    const productVariants = await fetchProductVariantsForStorefront(shopDomain, product_id);
+    const customSizeChartImage = chart.custom_size_chart_image || null;
     const response = {
       found: true,
+      product_variants: productVariants,
       chart: {
         id: chart.id,
         name: chart.name,
         category: chart.category,
         subcategory: chart.subcategory,
         fit_type: chart.fit_type,
+        custom_size_chart_image: customSizeChartImage,
         sizes: chartData.sizes,
         measurements: chartData.measurements || [],
-        chart_data: chartData,
-        optional_measurements: chart.optional_measurements ? JSON.parse(chart.optional_measurements) : {}
+        chart_data: {
+          ...chartData,
+          custom_size_chart_image: customSizeChartImage
+        },
+        optional_measurements: chart.optional_measurements ? JSON.parse(chart.optional_measurements) : {},
+        product_variants: productVariants
       }
     };
     

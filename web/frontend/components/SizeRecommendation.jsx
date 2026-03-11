@@ -103,8 +103,11 @@ export function SizeRecommendation({ shop, host }) {
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [isResourcePickerOpen, setIsResourcePickerOpen] = useState(false);
   const isMounted = useRef(true);
+  const customChartImageInputRef = useRef(null);
   const [editingRecommendationId, setEditingRecommendationId] = useState(null);
   const [limitBanner, setLimitBanner] = useState(false);
+  const [customSizeChartImage, setCustomSizeChartImage] = useState('');
+  const [customSizeChartImageName, setCustomSizeChartImageName] = useState('');
 
   // Add custom styles for the modal
   useEffect(() => {
@@ -141,6 +144,66 @@ export function SizeRecommendation({ shop, host }) {
     return () => {
       document.head.removeChild(styleEl);
     };
+  }, []);
+
+  const resetCustomSizeChartImage = useCallback(() => {
+    setCustomSizeChartImage('');
+    setCustomSizeChartImageName('');
+    if (customChartImageInputRef.current) {
+      customChartImageInputRef.current.value = '';
+    }
+  }, []);
+
+  const handleCustomSizeChartImageUpload = useCallback((event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setToastProps({
+        content: 'Please upload an image file.',
+        error: true
+      });
+      setShowToast(true);
+      if (customChartImageInputRef.current) {
+        customChartImageInputRef.current.value = '';
+      }
+      return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+      setToastProps({
+        content: 'Please upload an image smaller than 4MB.',
+        error: true
+      });
+      setShowToast(true);
+      if (customChartImageInputRef.current) {
+        customChartImageInputRef.current.value = '';
+      }
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        setToastProps({
+          content: 'Could not read that image. Please try another file.',
+          error: true
+        });
+        setShowToast(true);
+        return;
+      }
+
+      setCustomSizeChartImage(reader.result);
+      setCustomSizeChartImageName(file.name);
+    };
+    reader.onerror = () => {
+      setToastProps({
+        content: 'Could not read that image. Please try again.',
+        error: true
+      });
+      setShowToast(true);
+    };
+    reader.readAsDataURL(file);
   }, []);
 
   // Fetch existing size charts
@@ -204,6 +267,7 @@ export function SizeRecommendation({ shop, host }) {
     setChartName('');
     setSelectedProducts([]);
     setCurrentSizeRecommendation(null);
+    resetCustomSizeChartImage();
     console.log('Modal state reset');
   };
 
@@ -217,6 +281,7 @@ export function SizeRecommendation({ shop, host }) {
     setChartName('');
     setSelectedProducts([]);
     setCurrentSizeRecommendation(null);
+    resetCustomSizeChartImage();
     console.log('Modal state reset');
   };
 
@@ -401,6 +466,8 @@ export function SizeRecommendation({ shop, host }) {
     
     setEditingRecommendationId(chart.id);
     setChartName(chart.name);
+    setCustomSizeChartImage(chart.custom_size_chart_image || '');
+    setCustomSizeChartImageName(chart.custom_size_chart_image ? 'Current uploaded image' : '');
     // Map DB categories to UI labels
     const uiCategory = chart.category === 'bikinis' ? 'Bikini Tops / Bras' : chart.category;
     setSelectedCategory(uiCategory);
@@ -575,6 +642,7 @@ export function SizeRecommendation({ shop, host }) {
         // Map display category to DB-safe value
         category: selectedCategory === 'Bikini Tops / Bras' ? 'bikinis' : selectedCategory,
         fit_type: selectedFitType,
+        custom_size_chart_image: customSizeChartImage || null,
         chart_data: processedSizeRecommendation, // Use the processed data
         products: selectedProducts.map(product => ({
           id: product.id,
@@ -585,7 +653,10 @@ export function SizeRecommendation({ shop, host }) {
       };
 
       // Log the data being sent
-      console.log('Sending data:', JSON.stringify(requestData, null, 2));
+      console.log('Sending data:', {
+        ...requestData,
+        custom_size_chart_image: requestData.custom_size_chart_image ? '[uploaded image]' : null
+      });
 
       const url = editingRecommendationId 
         ? `/api/size-recommendations/${editingRecommendationId}?shop=${fullShopDomain}` 
@@ -1198,6 +1269,77 @@ export function SizeRecommendation({ shop, host }) {
           onChange={setChartName}
           autoComplete="off"
         />
+        <Box paddingBlockStart="4">
+          <LegacyCard>
+            <LegacyCard.Section>
+              <LegacyStack vertical spacing="3">
+                <div>
+                  <Text variant="headingMd" as="h3">Custom Size Chart Image</Text>
+                  <Box paddingBlockStart="1">
+                    <Text variant="bodyMd" as="p" color="subdued">
+                      Optional. Upload an image to show in the storefront modal instead of the default size chart table. If you leave this empty, nothing changes and the default table will still be shown.
+                    </Text>
+                  </Box>
+                </div>
+
+                <input
+                  ref={customChartImageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={handleCustomSizeChartImageUpload}
+                  style={{ display: 'none' }}
+                />
+
+                <LegacyStack spacing="3">
+                  <Button onClick={() => customChartImageInputRef.current?.click()}>
+                    {customSizeChartImage ? 'Replace Image' : 'Upload Image'}
+                  </Button>
+                  {customSizeChartImage && (
+                    <Button destructive onClick={resetCustomSizeChartImage}>
+                      Remove Image
+                    </Button>
+                  )}
+                </LegacyStack>
+
+                {customSizeChartImage ? (
+                  <div style={{
+                    border: '1px solid #dfe3e8',
+                    borderRadius: '12px',
+                    padding: '12px',
+                    background: '#ffffff'
+                  }}>
+                    <img
+                      src={customSizeChartImage}
+                      alt="Custom size chart preview"
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        maxWidth: '100%',
+                        height: 'auto',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Box paddingBlockStart="2">
+                      <Text variant="bodySm" as="p" color="subdued">
+                        {customSizeChartImageName || 'Custom image uploaded'}
+                      </Text>
+                    </Box>
+                  </div>
+                ) : (
+                  <Box
+                    padding="4"
+                    background="bg-surface-secondary"
+                    borderRadius="2"
+                  >
+                    <Text variant="bodyMd" as="p" color="subdued">
+                      No custom image uploaded. The default size chart table will be shown to customers.
+                    </Text>
+                  </Box>
+                )}
+              </LegacyStack>
+            </LegacyCard.Section>
+          </LegacyCard>
+        </Box>
         <Box padding="4" style={{ overflowX: 'visible', width: '100%' }}>
           <div style={{ width: '100%', margin: '0 auto' }}>
             <LegacyCard>
@@ -1478,7 +1620,7 @@ export function SizeRecommendation({ shop, host }) {
                   heading="Create your first size recommendation"
                   action={{
                     content: 'Create Size Recommendation',
-                    onAction: () => setIsModalOpen(true)
+                    onAction: handleModalOpen
                   }}
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
@@ -1489,7 +1631,7 @@ export function SizeRecommendation({ shop, host }) {
                   <Box paddingBlockEnd="4">
                     <LegacyStack distribution="equalSpacing" alignment="center">
                       <Text variant="headingMd" as="h3">Your Size Recommendations</Text>
-                      <Button primary onClick={() => setIsModalOpen(true)}>
+                      <Button primary onClick={handleModalOpen}>
                         Create Size Recommendation
                       </Button>
                     </LegacyStack>

@@ -188,6 +188,7 @@ router.post('/api/size-recommendations', async (req, res) => {
     subcategory,
     fit_type,
     products,
+    custom_size_chart_image,
   } = req.body;
 
   const sessionShop = res.locals?.shopify?.session?.shop;
@@ -242,6 +243,9 @@ router.post('/api/size-recommendations', async (req, res) => {
     const chartDataObj = typeof chart_data === 'string' ? JSON.parse(chart_data) : chart_data;
     const optional_measurements = chartDataObj?.optional_measurements || {};
     const chartDataString = JSON.stringify(chartDataObj);
+    const customSizeChartImage = typeof custom_size_chart_image === 'string' && custom_size_chart_image.trim()
+      ? custom_size_chart_image.trim()
+      : null;
     
     // Normalize category to match DB constraint
     // Normalize category against DB constraint (robust)
@@ -258,17 +262,17 @@ router.post('/api/size-recommendations', async (req, res) => {
     let recommendationId;
     if (process.env.DATABASE_URL) {
       const row = await req.app.locals.db.get(
-        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements, custom_size_chart_image)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
-        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements)]
+        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements), customSizeChartImage]
       );
       recommendationId = row?.id;
     } else {
       const result = await req.app.locals.db.run(
-        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements)]
+        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements, custom_size_chart_image)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements), customSizeChartImage]
       );
       recommendationId = result.lastID;
       if (!recommendationId) {
@@ -333,6 +337,7 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
     subcategory,
     fit_type,
     products,
+    custom_size_chart_image,
   } = req.body;
 
   const sessionShop = res.locals?.shopify?.session?.shop;
@@ -346,6 +351,9 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
     // Extract optional measurements from chart_data
     const optional_measurements = chart_data.optional_measurements || {};
     const optional_measurements_json = JSON.stringify(optional_measurements);
+    const customSizeChartImage = typeof custom_size_chart_image === 'string' && custom_size_chart_image.trim()
+      ? custom_size_chart_image.trim()
+      : null;
 
     // Update the size recommendation
     await req.app.locals.db.run(
@@ -356,6 +364,7 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
            subcategory = ?, 
            fit_type = ?, 
            optional_measurements = ?,
+           custom_size_chart_image = ?,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND shop_domain = ?`,
       [
@@ -365,6 +374,7 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
         subcategory || "",
         fit_type,
         optional_measurements_json,
+        customSizeChartImage,
         recommendationId,
         resolvedShop
       ]

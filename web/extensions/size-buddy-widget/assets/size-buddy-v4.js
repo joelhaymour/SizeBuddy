@@ -18,6 +18,7 @@
     const buttonTextColor = widget.getAttribute('data-button-text-color');
     const sliderTrackColor = widget.getAttribute('data-slider-track-color') || '#d8d8d8';
     const sliderFillColor = widget.getAttribute('data-slider-fill-color') || '#4A90E2';
+    const atcButtonColor = widget.getAttribute('data-atc-button-color') || buttonColor || sliderFillColor || '#4A90E2';
     
     console.log('Size Buddy: Widget attributes found:', { 
       productId, 
@@ -199,6 +200,600 @@
       return score;
     }
     
+    function normalizeSizeLabel(value) {
+      const compact = String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^size\s*/,'')
+        .replace(/[\s._-]+/g, '');
+      
+      const aliases = [
+        [/^(xxs|2xs|xxsmall|doubleextrasmall)$/, 'xxs'],
+        [/^(xs|xsmall|extrasmall)$/, 'xs'],
+        [/^(s|sm|small)$/, 's'],
+        [/^(m|md|med|medium)$/, 'm'],
+        [/^(l|lg|large)$/, 'l'],
+        [/^(xl|xlarge|extralarge)$/, 'xl'],
+        [/^(xxl|2xl|2x|xxlarge|doubleextralarge)$/, 'xxl'],
+        [/^(xxxl|3xl|3x|xxxlarge|tripleextralarge)$/, 'xxxl'],
+        [/^(xxxxl|4xl|4x|xxxxlarge|quadextralarge)$/, 'xxxxl'],
+      ];
+      
+      for (const [pattern, replacement] of aliases) {
+        if (pattern.test(compact)) return replacement;
+      }
+      
+      return compact.replace(/[^a-z0-9+]/g, '');
+    }
+    
+    let cachedProductVariants = null;
+    let cachedProductHandle = null;
+    let productVariantsPromise = null;
+    let latestRecommendationContext = null;
+    
+    function getCurrentProductHandle() {
+      if (cachedProductHandle) return cachedProductHandle;
+      
+      const handleSources = [
+        window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product && window.ShopifyAnalytics.meta.product.handle,
+        window.meta && window.meta.product && window.meta.product.handle
+      ];
+      
+      for (const source of handleSources) {
+        if (source) {
+          cachedProductHandle = String(source);
+          return cachedProductHandle;
+        }
+      }
+      
+      const canonical = document.querySelector('link[rel="canonical"]');
+      const candidates = [
+        canonical && canonical.href,
+        window.location && window.location.pathname
+      ].filter(Boolean);
+      
+      for (const candidate of candidates) {
+        const match = String(candidate).match(/\/products\/([^\/?#]+)/i);
+        if (match && match[1]) {
+          cachedProductHandle = decodeURIComponent(match[1]);
+          return cachedProductHandle;
+        }
+      }
+      
+      return null;
+    }
+    
+    async function ensureProductVariantsLoaded() {
+      if (Array.isArray(cachedProductVariants) && cachedProductVariants.length) {
+        return cachedProductVariants;
+      }
+      
+      if (productVariantsPromise) {
+        return productVariantsPromise;
+      }
+      
+      const existing = getProductVariants();
+      if (existing.length) {
+        return existing;
+      }
+      
+      const handle = getCurrentProductHandle();
+      if (!handle) {
+        cachedProductVariants = [];
+        return cachedProductVariants;
+      }
+      
+      productVariantsPromise = fetch('/products/' + encodeURIComponent(handle) + '.js?_=' + Date.now(), {
+        credentials: 'same-origin'
+      })
+        .then(async response => {
+          if (!response.ok) {
+            throw new Error('Failed to load product variants: ' + response.status);
+          }
+          return response.json();
+        })
+        .then(product => {
+          cachedProductVariants = Array.isArray(product && product.variants) ? product.variants : [];
+          console.log('Size Buddy: loaded product variants', { count: cachedProductVariants.length, handle });
+          return cachedProductVariants;
+        })
+        .catch(error => {
+          console.warn('Size Buddy: unable to load product variants from product JSON', error);
+          cachedProductVariants = [];
+          return cachedProductVariants;
+        })
+        .finally(() => {
+          productVariantsPromise = null;
+        });
+      
+      return productVariantsPromise;
+    }
+    
+    function getProductForm() {
+      return document.querySelector('form[action*="/cart/add"]');
+    }
+    
+    function getCurrentVariantIdFromForm() {
+      const form = getProductForm();
+      const input = form && form.querySelector('input[name="id"]');
+      return input && input.value ? input.value : null;
+    }
+    
+    function getProductSubmitButton() {
+      const form = getProductForm();
+      if (!form) return null;
+      return form.querySelector('button[type="submit"], button[name="add"], [name="add"]');
+    }
+    
+    function getVariantOptionValues(variant) {
+      if (!variant) return [];
+      const values = [];
+      
+      if (Array.isArray(variant.options)) {
+        variant.options.forEach(value => {
+          if (value) values.push(String(value));
+        });
+      }
+      
+      ['option1', 'option2', 'option3'].forEach(key => {
+        if (variant[key]) values.push(String(variant[key]));
+      });
+      
+      return values.filter((value, index, array) => array.indexOf(value) === index);
+    }
+    
+    function getVariantTextCandidates(variant) {
+      const pieces = [];
+      [variant && variant.title, variant && variant.name, variant && variant.public_title].forEach(value => {
+        if (!value) return;
+        const text = String(value);
+        pieces.push(text);
+        text.split('/').forEach(part => pieces.push(part.trim()));
+      });
+      return pieces.filter(Boolean);
+    }
+    
+    function getProductVariants() {
+      if (Array.isArray(cachedProductVariants)) return cachedProductVariants;
+      
+      const directSources = [
+        window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product && window.ShopifyAnalytics.meta.product.variants,
+        window.meta && window.meta.product && window.meta.product.variants
+      ];
+      
+      for (const source of directSources) {
+        if (Array.isArray(source) && source.length) {
+          cachedProductVariants = source;
+          return cachedProductVariants;
+        }
+      }
+      
+      const scripts = Array.from(document.querySelectorAll('script[type="application/json"]'));
+      for (const script of scripts) {
+        const raw = (script.textContent || '').trim();
+        if (!raw || raw.length > 300000) continue;
+        if (!raw.includes('variant') && !raw.includes('option')) continue;
+        
+        try {
+          const parsed = JSON.parse(raw);
+          const variants = Array.isArray(parsed && parsed.variants)
+            ? parsed.variants
+            : Array.isArray(parsed && parsed.product && parsed.product.variants)
+              ? parsed.product.variants
+              : null;
+          
+          if (Array.isArray(variants) && variants.length) {
+            cachedProductVariants = variants;
+            return cachedProductVariants;
+          }
+        } catch (_) {
+          // Ignore unrelated JSON blobs.
+        }
+      }
+      
+      cachedProductVariants = [];
+      return cachedProductVariants;
+    }
+    
+    function getCurrentVariantFromProductData() {
+      const currentVariantId = getCurrentVariantIdFromForm();
+      const variants = getProductVariants();
+      if (!currentVariantId || !variants.length) return null;
+      return variants.find(variant => String(variant.id) === String(currentVariantId)) || null;
+    }
+    
+    function productFormShowsSoldOut() {
+      const submitButton = getProductSubmitButton();
+      if (!submitButton) return false;
+      const submitText = String(submitButton.textContent || '').trim();
+      if (/(sold\s*out|out\s*of\s*stock|unavailable)/i.test(submitText)) return true;
+      if (submitButton.disabled) return true;
+      return false;
+    }
+    
+    function currentSelectionMatchesRecommendedSize(sizeLabel) {
+      const normalizedTarget = normalizeSizeLabel(sizeLabel);
+      if (!normalizedTarget) return false;
+      
+      const currentVariant = getCurrentVariantFromProductData();
+      if (currentVariant) {
+        if (getVariantOptionValues(currentVariant).some(value => normalizeSizeLabel(value) === normalizedTarget)) {
+          return true;
+        }
+        if (getVariantTextCandidates(currentVariant).some(value => normalizeSizeLabel(value) === normalizedTarget)) {
+          return true;
+        }
+      }
+      
+      const matchedControl = findMatchingSizeControl(sizeLabel);
+      if (!matchedControl) return false;
+      if (matchedControl.matches && matchedControl.matches(':checked, [selected], [aria-pressed="true"], .is-selected, .selected')) {
+        return true;
+      }
+      const selectedAncestor = matchedControl.closest && matchedControl.closest('[aria-pressed="true"], .is-selected, .selected');
+      return !!selectedAncestor;
+    }
+    
+    function isVariantSoldOut(variant) {
+      if (!variant) return false;
+      if (variant.available === false) return true;
+      
+      const inventoryPolicy = String(variant.inventory_policy || '').toLowerCase();
+      const inventoryManagement = variant.inventory_management;
+      const inventoryQuantity = Number(variant.inventory_quantity);
+      
+      if (inventoryManagement && inventoryPolicy !== 'continue' && !Number.isNaN(inventoryQuantity) && inventoryQuantity <= 0) {
+        return true;
+      }
+      
+      return false;
+    }
+    
+    function getControlTextCandidates(control) {
+      if (!control) return [];
+      const nearby = [
+        control,
+        control.parentElement,
+        control.closest && control.closest('label'),
+        control.closest && control.closest('button'),
+        control.closest && control.closest('[role="option"]')
+      ].filter(Boolean);
+      
+      const values = [];
+      nearby.forEach(element => {
+        values.push(
+          element.value,
+          element.getAttribute && element.getAttribute('value'),
+          element.getAttribute && element.getAttribute('aria-label'),
+          element.getAttribute && element.getAttribute('title'),
+          element.dataset && (element.dataset.value || element.dataset.optionValue),
+          element.textContent
+        );
+      });
+      
+      return values.filter(Boolean).map(value => String(value).trim());
+    }
+    
+    function isControlDisabled(control) {
+      if (!control) return false;
+      if (control.disabled) return true;
+      if (control.getAttribute && control.getAttribute('aria-disabled') === 'true') return true;
+      const disabledAncestor = control.closest && control.closest('[disabled], [aria-disabled="true"]');
+      return !!disabledAncestor;
+    }
+    
+    function controlLooksSoldOut(control) {
+      return getControlTextCandidates(control).some(value => /(sold\s*out|out\s*of\s*stock|unavailable)/i.test(value));
+    }
+    
+    function findMatchingSizeControl(sizeLabel) {
+      const normalizedTarget = normalizeSizeLabel(sizeLabel);
+      if (!normalizedTarget) return null;
+      
+      const controls = Array.from(document.querySelectorAll(
+        'input[type="radio"], option, button, label, select option'
+      ));
+      
+      for (const control of controls) {
+        const candidates = [
+          control.value,
+          control.getAttribute && control.getAttribute('value'),
+          control.dataset && (control.dataset.value || control.dataset.optionValue),
+          control.textContent,
+          control.getAttribute && control.getAttribute('aria-label')
+        ].filter(Boolean);
+        
+        if (candidates.some(value => normalizeSizeLabel(value) === normalizedTarget)) {
+          return control;
+        }
+      }
+      
+      return null;
+    }
+    
+    function resolveVariantForRecommendedSize(sizeLabel) {
+      const normalizedTarget = normalizeSizeLabel(sizeLabel);
+      const variants = getProductVariants();
+      if (!normalizedTarget || !variants.length) return null;
+      
+      const currentVariant = getCurrentVariantFromProductData();
+      const currentOptions = getVariantOptionValues(currentVariant);
+      
+      const candidates = variants.map(variant => {
+        const optionValues = getVariantOptionValues(variant);
+        const matchingOptionIndexes = [];
+        
+        optionValues.forEach((value, index) => {
+          if (normalizeSizeLabel(value) === normalizedTarget) {
+            matchingOptionIndexes.push(index);
+          }
+        });
+        
+        let matched = matchingOptionIndexes.length > 0;
+        if (!matched) {
+          matched = getVariantTextCandidates(variant).some(value => normalizeSizeLabel(value) === normalizedTarget);
+        }
+        
+        if (!matched) return null;
+        
+        let score = 0;
+        optionValues.forEach((value, index) => {
+          if (matchingOptionIndexes.indexOf(index) >= 0) {
+            score += 5;
+            return;
+          }
+          
+          const currentValue = currentOptions[index];
+          if (currentValue && String(currentValue).trim().toLowerCase() === String(value).trim().toLowerCase()) {
+            score += 2;
+          }
+        });
+        
+        if (currentVariant && String(variant.id) === String(currentVariant.id)) {
+          score += 1;
+        }
+        
+        if (!isVariantSoldOut(variant)) {
+          score += 0.5;
+        }
+        
+        return { variant, score };
+      }).filter(Boolean);
+      
+      if (!candidates.length) {
+        return { status: 'size_not_available' };
+      }
+      
+      candidates.sort((left, right) => right.score - left.score);
+      const selected = candidates[0].variant;
+      return {
+        status: isVariantSoldOut(selected) ? 'sold_out' : 'available',
+        variantId: selected.id ? String(selected.id) : null,
+        variant: selected
+      };
+    }
+    
+    function getRecommendedSizePurchaseState(sizeLabel) {
+      if (currentSelectionMatchesRecommendedSize(sizeLabel) && productFormShowsSoldOut()) {
+        return { status: 'sold_out' };
+      }
+      
+      const variantState = resolveVariantForRecommendedSize(sizeLabel);
+      if (variantState) return variantState;
+      
+      const control = findMatchingSizeControl(sizeLabel);
+      if (!control) {
+        return { status: 'size_not_available' };
+      }
+      
+      if (isControlDisabled(control) || controlLooksSoldOut(control)) {
+        return { status: 'sold_out' };
+      }
+      
+      return { status: 'available', control };
+    }
+    
+    function syncSizeSelectionOnProductForm(sizeLabel) {
+      const control = findMatchingSizeControl(sizeLabel);
+      if (!control) return false;
+      
+      if (isControlDisabled(control) || controlLooksSoldOut(control)) {
+        return false;
+      }
+      
+      const tag = control.tagName.toLowerCase();
+      if (tag === 'option' && control.parentElement) {
+        control.parentElement.value = control.value;
+        control.parentElement.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (tag === 'input') {
+        control.checked = true;
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+        control.dispatchEvent(new Event('input', { bubbles: true }));
+      } else {
+        control.click();
+      }
+      
+      return true;
+    }
+    
+    async function selectSizeOnProductForm(sizeLabel) {
+      const state = getRecommendedSizePurchaseState(sizeLabel);
+      if (state.status !== 'available') {
+        return state;
+      }
+      
+      const clicked = syncSizeSelectionOnProductForm(sizeLabel);
+      if (clicked) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      
+      const submitButton = getProductSubmitButton();
+      const submitText = submitButton ? String(submitButton.textContent || '').trim() : '';
+      if ((submitButton && submitButton.disabled && /(sold\s*out|out\s*of\s*stock|unavailable)/i.test(submitText)) || (!clicked && !state.variantId)) {
+        return { status: 'sold_out' };
+      }
+      
+      const variantId = state.variantId || getCurrentVariantIdFromForm();
+      if (!variantId) {
+        return { status: 'size_not_available' };
+      }
+      
+      return { status: 'available', variantId };
+    }
+    
+    function getAtcNoticeMarkup(message, tone) {
+      const palette = tone === 'error'
+        ? {
+            background: '#fff4f4',
+            border: '#f3b3b3',
+            color: '#a53b3b'
+          }
+        : {
+            background: '#fff8ef',
+            border: '#f0cf9a',
+            color: '#9a610d'
+          };
+      
+      return '<div class="size-buddy-atc-status" style="margin-top:10px;padding:12px 14px;border-radius:12px;background:' + palette.background + ';border:1px solid ' + palette.border + ';color:' + palette.color + ';font-size:14px;font-weight:600;line-height:1.4;">' + message + '</div>';
+    }
+    
+    function replaceAtcButtonWithMessage(buttonEl, message, tone) {
+      if (!buttonEl || !buttonEl.parentNode) return;
+      buttonEl.outerHTML = getAtcNoticeMarkup(message, tone);
+    }
+    
+    function getRecommendedSizeCtaMarkup(sizeLabel, state) {
+      const resolvedState = state || getRecommendedSizePurchaseState(sizeLabel);
+      if (resolvedState.status === 'sold_out') {
+        return getAtcNoticeMarkup('Size ' + sizeLabel + ' is sold out for this product.', 'warning');
+      }
+      
+      if (resolvedState.status === 'size_not_available') {
+        return getAtcNoticeMarkup('Size ' + sizeLabel + ' is not available for this product.', 'error');
+      }
+      
+      return '<button id="size-buddy-add-to-cart" class="size-buddy-atc-button" style="margin-top:10px;width:100%;padding:14px 20px;background-color:' + atcButtonColor + ';color:#FFFFFF;border:none;border-radius:999px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.12);transition:all 0.2s ease;">Add Size ' + sizeLabel + ' to Cart</button>';
+    }
+    
+    function scrollRecommendedCardIntoView() {
+      try {
+        const card = document.querySelector('#size-buddy-result .size-buddy-result-container');
+        if (!card) return;
+        const targetTop = Math.max(0, card.offsetTop - 12);
+        modalContent.scrollTo({ top: targetTop, behavior: 'smooth' });
+      } catch (error) {
+        console.error('Size Buddy: unable to scroll recommendation card into view', error);
+      }
+    }
+    
+    function animateAtcButtonSuccess(buttonEl) {
+      if (!buttonEl) return;
+      buttonEl.textContent = 'Added to Cart!';
+      buttonEl.style.backgroundColor = '#59c93d';
+      buttonEl.style.boxShadow = '0 8px 18px rgba(89,201,61,0.28)';
+      buttonEl.style.transform = 'translateY(-1px) scale(1.01)';
+      buttonEl.style.opacity = '1';
+    }
+    
+    // Helper: add recommended size to cart via AJAX only
+    async function addRecommendedSizeToCart(bestSize, buttonEl) {
+      const recommendation = typeof bestSize === 'object' && bestSize
+        ? bestSize
+        : ((latestRecommendationContext && latestRecommendationContext.size === bestSize) ? latestRecommendationContext : { size: bestSize });
+      const sizeLabel = recommendation && recommendation.size ? recommendation.size : bestSize;
+      if (!sizeLabel) return;
+      try {
+        await ensureProductVariantsLoaded();
+        if (buttonEl) {
+          buttonEl.disabled = true;
+          buttonEl.textContent = 'Adding...';
+          buttonEl.style.opacity = '0.9';
+          buttonEl.style.transform = 'translateY(0) scale(0.99)';
+        }
+        
+        const selection = await selectSizeOnProductForm(sizeLabel);
+        if (selection.status === 'sold_out') {
+          const error = new Error('Size ' + sizeLabel + ' is sold out for this product.');
+          error.code = 'sold_out';
+          throw error;
+        }
+        
+        if (selection.status === 'size_not_available' || !selection.variantId) {
+          const error = new Error('Size ' + sizeLabel + ' is not available for this product.');
+          error.code = 'size_not_available';
+          throw error;
+        }
+
+        const addToCartPayload = { id: selection.variantId, quantity: 1 };
+        if (recommendation && recommendation.token) {
+          addToCartPayload.properties = {
+            _size_buddy_recommendation_token: recommendation.token,
+            _size_buddy_chart_id: String(recommendation.chartId || ''),
+            _size_buddy_recommended_size: String(sizeLabel),
+            _size_buddy_product_id: String(recommendation.productId || ''),
+          };
+        }
+        
+        const resp = await fetch('/cart/add.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(addToCartPayload)
+        });
+        
+        if (!resp.ok) {
+          let errorMessage = 'Add to cart failed with ' + resp.status;
+          try {
+            const payload = await resp.json();
+            const description = payload && (payload.description || payload.message || payload.error);
+            if (description) errorMessage = description;
+          } catch (_) {
+            // Keep default error message.
+          }
+          
+          const error = new Error(errorMessage);
+          if (/sold\s*out|out\s*of\s*stock|available quantity/i.test(errorMessage)) {
+            error.code = 'sold_out';
+          } else if (/not available|cannot find variant|no valid id|unavailable/i.test(errorMessage)) {
+            error.code = 'size_not_available';
+          }
+          throw error;
+        }
+        
+        await resp.json();
+        try {
+          await logRecommendationAddToCart(recommendation, selection.variantId);
+        } catch (logError) {
+          console.warn('Size Buddy: add to cart analytics logging failed', logError);
+        }
+        animateAtcButtonSuccess(buttonEl);
+        
+        document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
+        document.documentElement.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
+        window.dispatchEvent(new CustomEvent('cart:refresh'));
+      } catch (error) {
+        console.error('Size Buddy: error adding recommended size to cart', error);
+        if (buttonEl) {
+          if (error.code === 'sold_out') {
+            replaceAtcButtonWithMessage(buttonEl, 'Size ' + sizeLabel + ' is sold out for this product.', 'warning');
+            return;
+          }
+          
+          if (error.code === 'size_not_available') {
+            replaceAtcButtonWithMessage(buttonEl, 'Size ' + sizeLabel + ' is not available for this product.', 'error');
+            return;
+          }
+          
+          buttonEl.disabled = false;
+          buttonEl.textContent = 'Add Size ' + sizeLabel + ' to Cart';
+          buttonEl.style.opacity = '1';
+          buttonEl.style.transform = 'translateY(0)';
+        }
+      }
+    }
+    
     // Add slider styles (scoped to modal content so theme CSS cannot override)
     const styleEl = document.createElement('style');
     styleEl.id = 'size-buddy-slider-styles';
@@ -364,15 +959,17 @@
     // Function to fetch size data and render form
     async function fetchSizeData(productId, shopDomain, contentDiv) {
       try {
-        // Resolve backend and modal/slider colors from block settings
+        // Resolve backend base URL: block setting (data-backend-url) for local testing, else window.SIZE_BUDDY_HOST, else production
         const widgetEl = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
         const backendBase = (widgetEl && widgetEl.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
         const backendBaseClean = (backendBase || '').replace(/\/$/, '');
+
+        // Modal/slider colors from block settings (same button colors used for modal button)
         const modalBtnColor = (widgetEl && widgetEl.getAttribute('data-button-color')) || '#4A90E2';
         const modalBtnTextColor = (widgetEl && widgetEl.getAttribute('data-button-text-color')) || '#FFFFFF';
         const sliderTrackColor = (widgetEl && widgetEl.getAttribute('data-slider-track-color')) || '#d8d8d8';
         const sliderFillColor = (widgetEl && widgetEl.getAttribute('data-slider-fill-color')) || '#4A90E2';
-        // Add timestamp to prevent caching
+        
         const timestamp = Date.now();
         const currentDomain = window.location.hostname;
         const resolvedShopDomain = shopDomain ||
@@ -387,9 +984,10 @@
           _: String(timestamp)
         });
         const proxyUrl = '/apps/size-buddy/size-charts?' + proxyParams.toString();
-        // Fallback (public, read-only): server public endpoint
-        const directUrl = (backendBaseClean || 'https://sizebuddy.onrender.com') + '/public/size-charts?product_id=' + productId + '&shop=' + encodeURIComponent(resolvedShopDomain) + '&_=' + timestamp;
+        // Fallback (public, read-only): backend public endpoint – uses local ngrok when Backend URL is set for testing
+        const directUrl = backendBaseClean + '/public/size-charts?product_id=' + productId + '&shop=' + encodeURIComponent(resolvedShopDomain) + '&_=' + timestamp;
         
+        await ensureProductVariantsLoaded();
         console.log('Fetching size data from:', proxyUrl, 'resolved shop:', resolvedShopDomain);
         
         let response = await fetch(proxyUrl);
@@ -409,13 +1007,35 @@
           return;
         }
         
-        const chart = data.chart;
+        const rawChart = data.chart || data.sizeChart;
+        if (!rawChart) {
+          throw new Error('No chart payload found in response');
+        }
+
+        const chart = {
+          ...rawChart,
+          custom_size_chart_image: rawChart.custom_size_chart_image ||
+            (rawChart.chart_data && rawChart.chart_data.custom_size_chart_image) ||
+            data.custom_size_chart_image ||
+            null
+        };
+
+        if (Array.isArray(data.product_variants) && data.product_variants.length) {
+          cachedProductVariants = data.product_variants;
+        } else if (Array.isArray(chart.product_variants) && chart.product_variants.length) {
+          cachedProductVariants = chart.product_variants;
+        }
+
+        console.log('Size Buddy: chart payload received', {
+          chartId: chart.id,
+          hasCustomSizeChartImage: !!chart.custom_size_chart_image
+        });
         
         // Log widget view for analytics (only once when widget is displayed)
         if (!window.sizeBuddyViewLogged) window.sizeBuddyViewLogged = {};
         if (!window.sizeBuddyViewLogged[productId]) {
           try {
-            const backendUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com');
+            const backendUrl = backendBaseClean;
             await fetch(`${backendUrl}/api/log-widget-view`, {
               method: 'POST',
               headers: {
@@ -710,7 +1330,7 @@
           }
         });
         
-        // Add button
+        // Add button (modal "Find My Size" uses same colors as block button settings)
         formHtml += '<div class="size-buddy-form-group" style="margin-top:30px;">' +
                    '<button id="size-buddy-get-recommendation" ' +
                    'class="size-buddy-button size-buddy-modal-submit" ' +
@@ -721,35 +1341,44 @@
         formHtml += '<div id="size-buddy-result" style="margin-top:20px;"></div>';
         formHtml += '</div>';
         
-        // Add size chart with modern styling
+        // Add size chart display with modern styling
         formHtml += '<div style="margin-top:30px;">' +
-          '<h3 style="text-align:center;color:#333;margin-bottom:20px;">Size Chart</h3>' +
-          '<div style="overflow-x:auto;">' +
-          '<table style="width:100%;border-collapse:collapse;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.1);border-radius:8px;">' +
-          '<thead><tr>' +
-          '<th style="border:1px solid #f0f0f0;padding:12px;background-color:#f8f9fa;text-align:center;font-weight:600;color:#333;">Size</th>';
+          '<h3 style="text-align:center;color:#333;margin-bottom:20px;">Size Chart</h3>';
 
-        // Add measurement headers
-        measurements.forEach(m => {
-          formHtml += '<th style="border:1px solid #f0f0f0;padding:12px;background-color:#f8f9fa;text-align:center;font-weight:600;color:#333;">' + m.name + '</th>';
-        });
+        if (chart.custom_size_chart_image) {
+          formHtml += '<div style="background:white;box-shadow:0 1px 3px rgba(0,0,0,0.1);border-radius:12px;padding:12px;">' +
+            '<img src="' + chart.custom_size_chart_image + '" alt="Size chart" style="display:block;width:100%;height:auto;border-radius:8px;">' +
+            '</div>';
+        } else {
+          formHtml += '<div style="overflow-x:auto;">' +
+            '<table style="width:100%;border-collapse:collapse;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.1);border-radius:8px;">' +
+            '<thead><tr>' +
+            '<th style="border:1px solid #f0f0f0;padding:12px;background-color:#f8f9fa;text-align:center;font-weight:600;color:#333;">Size</th>';
 
-        formHtml += '</tr></thead><tbody>';
-
-        // Add size rows
-        chart.sizes.forEach((size, idx) => {
-          const sizeName = size.size || size.name;
-          formHtml += '<tr id="size-chart-row-' + sizeName + '" style="' + (idx % 2 === 0 ? 'background-color:#ffffff;' : 'background-color:#fafafa;') + '">' +
-            '<td style="border:1px solid #f0f0f0;padding:12px;text-align:center;font-weight:600;color:#333;">' + sizeName + '</td>';
-
+          // Add measurement headers
           measurements.forEach(m => {
-            formHtml += '<td style="border:1px solid #f0f0f0;padding:12px;text-align:center;color:#666;">' + (size[m.id] || '-') + '</td>';
+            formHtml += '<th style="border:1px solid #f0f0f0;padding:12px;background-color:#f8f9fa;text-align:center;font-weight:600;color:#333;">' + m.name + '</th>';
           });
 
-          formHtml += '</tr>';
-        });
+          formHtml += '</tr></thead><tbody>';
 
-        formHtml += '</tbody></table></div></div>';
+          // Add size rows
+          chart.sizes.forEach((size, idx) => {
+            const sizeName = size.size || size.name;
+            formHtml += '<tr id="size-chart-row-' + sizeName + '" style="' + (idx % 2 === 0 ? 'background-color:#ffffff;' : 'background-color:#fafafa;') + '">' +
+              '<td style="border:1px solid #f0f0f0;padding:12px;text-align:center;font-weight:600;color:#333;">' + sizeName + '</td>';
+
+            measurements.forEach(m => {
+              formHtml += '<td style="border:1px solid #f0f0f0;padding:12px;text-align:center;color:#666;">' + (size[m.id] || '-') + '</td>';
+            });
+
+            formHtml += '</tr>';
+          });
+
+          formHtml += '</tbody></table></div>';
+        }
+
+        formHtml += '</div>';
         
         // Set the content
         contentDiv.innerHTML = formHtml;
@@ -930,7 +1559,6 @@
               opt.style.color = '#333';
             });
             
-            // Highlight selected option
             // Highlight selected option (use slider fill color from widget)
             const fillColor = (document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]'))?.getAttribute('data-slider-fill-color') || '#4A90E2';
             this.style.borderColor = fillColor;
@@ -1390,13 +2018,25 @@
         
         if (bestSize) {
           console.log(`Selected ${bestSize} with score ${bestScore.toFixed(2)}`);
+          const purchaseState = getRecommendedSizePurchaseState(bestSize);
+          latestRecommendationContext = {
+            token: generateRecommendationToken(),
+            chartId: chart.id,
+            productId,
+            shopDomain,
+            size: bestSize,
+            measurements: userMeasurements,
+            availabilityStatus: purchaseState.status || 'available',
+            variantId: purchaseState.variantId || null,
+          };
           
-          // Create animation container with enhanced styling and animations
+          // Create animation container with enhanced styling, animations, and add-to-cart button
           resultDiv.innerHTML = 
             '<div class="size-buddy-result-container" style="margin:25px auto;padding:25px;background-color:#f1f9f1;border-radius:10px;text-align:center;max-width:400px;box-shadow:0 3px 10px rgba(0,0,0,0.08);border-left:4px solid #4caf50;opacity:0;transform:translateY(20px);">' +
               '<div class="size-buddy-title" style="font-size:18px;color:#333;margin-bottom:15px;opacity:0;transform:translateY(10px);">Your Recommended Size</div>' +
               '<div class="size-buddy-size" style="font-size:42px;font-weight:700;color:#4caf50;margin:20px 0;opacity:0;transform:scale(0.9);">' + bestSize + '</div>' +
-              '<p class="size-buddy-message" style="color:#666;margin:15px 0 0;opacity:0;transform:translateY(10px);">Based on your measurements, we recommend size ' + bestSize + '.</p>' +
+              '<p class="size-buddy-message" style="color:#666;margin:15px 0 20px;opacity:0;transform:translateY(10px);">Based on your measurements, we recommend size ' + bestSize + '.</p>' +
+              getRecommendedSizeCtaMarkup(bestSize, purchaseState) +
             '</div>';
             
             // Add enhanced animation styles
@@ -1444,12 +2084,16 @@
             // Highlight the recommended size in the chart
             highlightSizeInChart(bestSize);
             
-            // --- ALWAYS log recommendation for all product types ---
-            if (!window.sizeBuddyRecommendationLogged[productId]) {
-              window.sizeBuddyRecommendationLogged[productId] = true;
-              console.log('About to log recommendation:', { chartId: chart.id, bestSize, userMeasurements, shopDomain, productId });
-              logSizeRecommendation(chart.id, bestSize, userMeasurements, shopDomain, productId);
+            // Attach add-to-cart handler
+            const atcBtn = document.getElementById('size-buddy-add-to-cart');
+            if (atcBtn) {
+              const currentRecommendation = latestRecommendationContext;
+              atcBtn.addEventListener('click', () => addRecommendedSizeToCart(currentRecommendation, atcBtn));
             }
+            requestAnimationFrame(() => scrollRecommendedCardIntoView());
+            
+            console.log('About to log recommendation:', latestRecommendationContext);
+            logSizeRecommendation(latestRecommendationContext);
             return;
         } else {
           resultDiv.innerHTML = '<div style="color:#ff5252;padding:15px;background:#fff8f8;border-radius:8px;text-align:center;margin:15px auto;max-width:400px;box-shadow:0 2px 4px rgba(0,0,0,0.05);">Unable to determine a size recommendation</div>';
@@ -1477,8 +2121,7 @@
           rowToHighlight.style.backgroundColor = '#e8f5e9';
           rowToHighlight.style.fontWeight = 'bold';
           
-          // Scroll to the row if it's out of view
-          rowToHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Keep the recommendation card visible at the top of the modal instead of auto-scrolling down to the table row.
         }
       } catch (error) {
         console.error('Error highlighting size in chart:', error);
@@ -1728,14 +2371,86 @@
     }
   }
   
+  function generateRecommendationToken() {
+    return 'sb-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
+  async function logRecommendationAddToCart(recommendation, variantId) {
+    if (!recommendation || !recommendation.token || !recommendation.shopDomain) return;
+    const payload = {
+      shop: recommendation.shopDomain,
+      recommendation_token: recommendation.token,
+      variant_id: variantId || recommendation.variantId || null,
+      product_id: recommendation.productId,
+      chart_id: recommendation.chartId,
+      recommended_size: recommendation.size,
+    };
+
+    const w = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
+    const backendBase = (w && w.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
+    const backendUrl = (backendBase || '').replace(/\/$/, '');
+    let logSuccess = false;
+
+    try {
+      const response = await fetch(`${backendUrl}/api/log-add-to-cart`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+      if (response.ok) {
+        logSuccess = true;
+      }
+    } catch (error) {
+      console.warn('Size Buddy: direct add-to-cart log failed', error);
+    }
+
+    if (!logSuccess) {
+      try {
+        await fetch(`https://${recommendation.shopDomain}/apps/size-buddy/api/proxy/log-add-to-cart`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload)
+        });
+      } catch (error) {
+        console.warn('Size Buddy: proxy add-to-cart log failed', error);
+      }
+    }
+  }
+
   // Function to log size recommendations for analytics
   async function logSizeRecommendation(chartId, recommendedSize, measurements, shopDomain, productId) {
     try {
-      console.log('logSizeRecommendation called with:', { chartId, recommendedSize, measurements, shopDomain, productId });
-      // Use direct backend URL first
-      const backendUrls = [
-        (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com')
-      ];
+      const payload = (chartId && typeof chartId === 'object' && !Array.isArray(chartId))
+        ? {
+            shop: chartId.shopDomain || chartId.shop || shopDomain,
+            product_id: chartId.productId || chartId.product_id || productId,
+            chart_id: chartId.chartId || chartId.chart_id,
+            recommended_size: chartId.size || chartId.recommended_size || recommendedSize,
+            measurements: chartId.measurements || measurements || {},
+            recommendation_token: chartId.token || chartId.recommendation_token || null,
+            availability_status: chartId.availabilityStatus || chartId.availability_status || 'available',
+            variant_id: chartId.variantId || chartId.variant_id || null,
+          }
+        : {
+            shop: shopDomain,
+            product_id: productId,
+            chart_id: chartId,
+            recommended_size: recommendedSize,
+            measurements: measurements || {},
+            recommendation_token: null,
+            availability_status: 'available',
+            variant_id: null,
+          };
+
+      console.log('logSizeRecommendation called with:', payload);
+      const w = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
+      const backendBase = (w && w.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
+      const backendUrl = (backendBase || '').replace(/\/$/, '');
+      const backendUrls = [backendUrl];
       let logSuccess = false;
       for (const backendUrl of backendUrls) {
         try {
@@ -1745,13 +2460,7 @@
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              shop: shopDomain,
-              product_id: productId,
-              chart_id: chartId,
-              recommended_size: recommendedSize,
-              measurements: measurements
-            })
+            body: JSON.stringify(payload)
           });
           if (response.ok) {
             console.log('Successfully logged recommendation to direct backend');
@@ -1764,22 +2473,15 @@
           console.log(`Failed to log to ${backendUrl}:`, error);
         }
       }
-      // If direct backend failed, try app proxy
       if (!logSuccess) {
         console.log('Falling back to app proxy for logging');
         try {
-          const response = await fetch(`https://${shopDomain}/apps/size-buddy/api/proxy/log-recommendation`, {
+          const response = await fetch(`https://${payload.shop}/apps/size-buddy/api/proxy/log-recommendation`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              shop: shopDomain,
-              product_id: productId,
-              chart_id: chartId,
-              recommended_size: recommendedSize,
-              measurements: measurements
-            })
+            body: JSON.stringify(payload)
           });
           if (response.ok) {
             console.log('Successfully logged recommendation to app proxy');

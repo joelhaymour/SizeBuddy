@@ -1,173 +1,251 @@
 import {
-  LegacyCard,
-  Text,
+  Banner,
   Box,
-  LegacyStack,
   Button,
   DataTable,
-  Spinner,
-  Banner,
+  LegacyCard,
+  LegacyStack,
+  Modal,
   Select,
-} from "@shopify/polaris";
-import { useState, useCallback, useEffect } from "react";
+  Spinner,
+  Text,
+  TextField,
+} from '@shopify/polaris';
 import { useAuthenticatedFetch } from '@shopify/app-bridge-react';
-import { Button as PButton } from "@shopify/polaris";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+function formatCurrency(value, currency = 'USD') {
+  const amount = Number(value || 0);
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch (_error) {
+    return `$${amount.toFixed(2)}`;
+  }
+}
+
+function formatPercent(value) {
+  return `${Number(value || 0).toFixed(1)}%`;
+}
+
+function SummaryCard({ title, value, subtitle }) {
+  return (
+    <div
+      style={{
+        background: '#ffffff',
+        border: '1px solid #e1e3e5',
+        borderRadius: 16,
+        padding: 20,
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+        minHeight: 132,
+      }}
+    >
+      <Text as="h3" variant="bodyMd" tone="subdued">
+        {title}
+      </Text>
+      <div style={{ marginTop: 14 }}>
+        <Text as="p" variant="heading2xl">
+          {value}
+        </Text>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <Text as="p" variant="bodySm" tone="subdued">
+          {subtitle}
+        </Text>
+      </div>
+    </div>
+  );
+}
 
 export function Analytics({ shop, host }) {
   const fetch = useAuthenticatedFetch();
   const [isLoading, setIsLoading] = useState(true);
+  const [isResetting, setIsResetting] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedDateRange, setSelectedDateRange] = useState('last7days');
+  const [searchValue, setSearchValue] = useState('');
+  const [showAllProducts, setShowAllProducts] = useState(false);
   const [analyticsData, setAnalyticsData] = useState({
     totalViews: 0,
-    totalRecommendations: 0,
-    topProductsByRecommendations: [],
-    topProductsByViews: []
+    summary: {
+      totalRevenue: 0,
+      totalRecommendations: 0,
+      recommendationToAddToCartRate: 0,
+      recommendationToPurchaseRate: 0,
+      currency: 'USD',
+    },
+    productPerformance: [],
   });
-  const [selectedDateRange, setSelectedDateRange] = useState('last7days');
-  const [showAllViews, setShowAllViews] = useState(false);
-  const [showAllRecommendations, setShowAllRecommendations] = useState(false);
+  const [soldOutModalProduct, setSoldOutModalProduct] = useState(null);
 
-  const dateRangeOptions = [
-    { label: 'Last 7 Days', value: 'last7days' },
-    { label: 'Last 30 Days', value: 'last30days' },
-    { label: 'Last 90 Days', value: 'last90days' },
-  ];
+  const dateRangeOptions = useMemo(() => ([
+    { label: 'Past 7 Days', value: 'last7days' },
+    { label: 'Past 30 Days', value: 'last30days' },
+    { label: 'Past 90 Days', value: 'last90days' },
+    { label: 'All Time', value: 'all' },
+  ]), []);
 
   const fetchAnalyticsData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      
-      const response = await fetch(`/api/analytics?shop=${shop}&host=${host}&range=${selectedDateRange}`);
-      
+      const response = await fetch(
+        `/api/analytics?shop=${encodeURIComponent(shop)}&host=${encodeURIComponent(host || '')}&range=${encodeURIComponent(selectedDateRange)}`
+      );
+
       if (!response.ok) {
         throw new Error('Failed to fetch analytics data');
       }
-      
+
       const data = await response.json();
-      setAnalyticsData(data);
+      setAnalyticsData({
+        totalViews: Number(data?.totalViews || 0),
+        summary: {
+          totalRevenue: Number(data?.summary?.totalRevenue || 0),
+          totalRecommendations: Number(data?.summary?.totalRecommendations || 0),
+          recommendationToAddToCartRate: Number(data?.summary?.recommendationToAddToCartRate || 0),
+          recommendationToPurchaseRate: Number(data?.summary?.recommendationToPurchaseRate || 0),
+          currency: data?.summary?.currency || 'USD',
+        },
+        productPerformance: Array.isArray(data?.productPerformance) ? data.productPerformance : [],
+      });
     } catch (err) {
       console.error('Error fetching analytics:', err);
-      setError(err.message);
+      setError(err.message || 'Failed to fetch analytics data');
     } finally {
       setIsLoading(false);
     }
-  }, [fetch, shop, host, selectedDateRange]);
+  }, [fetch, host, selectedDateRange, shop]);
 
   useEffect(() => {
     if (shop && host) {
       fetchAnalyticsData();
     }
-  }, [fetchAnalyticsData, shop, host, selectedDateRange]);
+  }, [fetchAnalyticsData, host, shop]);
 
-  const rows = [
-    ['Total Views', analyticsData.totalViews],
-    ['Total Recommendations', analyticsData.totalRecommendations],
-  ];
+  const handleResetData = useCallback(async () => {
+    if (!window.confirm('Reset all analytics data for this shop? This is intended for testing only.')) {
+      return;
+    }
 
-  const handleUpgrade = async (plan) => {
     try {
-      const url = new URL(window.location.href);
-      const hostParam = url.searchParams.get('host') || host;
-      const target = `/api/billing/redirect?plan=${encodeURIComponent(plan)}${hostParam ? `&host=${encodeURIComponent(hostParam)}` : ''}`;
-      window.location.href = target;
-    } catch (e) {}
-  };
+      setIsResetting(true);
+      setError(null);
+      const response = await fetch('/api/analytics/reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ shop }),
+      });
 
-  const renderProductRow = (product, index) => {
-    return [
-      <Box key={`product-${index}`}>
-        <Text variant="bodyMd" fontWeight="semibold">
-          {product.product_title || 'Unknown Product'}
-        </Text>
-        <Text variant="bodySm" color="subdued">
-          {product.product_handle || 'No handle'}
-        </Text>
-      </Box>
-    ];
-  };
+      if (!response.ok) {
+        throw new Error('Failed to reset analytics data');
+      }
 
-  const renderTopProductsByViews = () => {
-    if (analyticsData.topProductsByViews.length === 0) {
-      return (
-        <Banner status="info">
-          <p>No product views data available yet. Start using the widget to see which products get the most views!</p>
-        </Banner>
-      );
+      await fetchAnalyticsData();
+    } catch (err) {
+      console.error('Error resetting analytics:', err);
+      setError(err.message || 'Failed to reset analytics data');
+    } finally {
+      setIsResetting(false);
     }
-    const displayProducts = showAllViews ? analyticsData.topProductsByViews : analyticsData.topProductsByViews.slice(0, 5);
-    const productRows = displayProducts.map((product, index) => [
-      ...renderProductRow(product, index),
-      product.view_count
-    ]);
-    return (
-      <>
-        <DataTable
-          columnContentTypes={['text', 'numeric']}
-          headings={['Product', 'Views']}
-          rows={productRows}
-        />
-        {analyticsData.topProductsByViews.length > 5 && !showAllViews && (
-          <Box paddingBlockStart="2">
-            <Button onClick={() => setShowAllViews(true)} fullWidth>
-              See More
-            </Button>
-          </Box>
-        )}
-        {showAllViews && (
-          <Box paddingBlockStart="2">
-            <Button onClick={() => setShowAllViews(false)} fullWidth>
-              See Less
-            </Button>
-          </Box>
-        )}
-      </>
-    );
-  };
+  }, [fetch, fetchAnalyticsData, shop]);
 
-  const renderTopProductsByRecommendations = () => {
-    if (analyticsData.topProductsByRecommendations.length === 0) {
-      return (
-        <Banner status="info">
-          <p>No recommendations data available yet. Start using the widget to see which products get the most recommendations!</p>
-        </Banner>
-      );
-    }
-    const displayProducts = showAllRecommendations ? analyticsData.topProductsByRecommendations : analyticsData.topProductsByRecommendations.slice(0, 5);
-    const productRows = displayProducts.map((product, index) => [
-      ...renderProductRow(product, index),
-      product.recommendation_count
-    ]);
-    return (
-      <>
-        <DataTable
-          columnContentTypes={['text', 'numeric']}
-          headings={['Product', 'Recommendations']}
-          rows={productRows}
-        />
-        {analyticsData.topProductsByRecommendations.length > 5 && !showAllRecommendations && (
-          <Box paddingBlockStart="2">
-            <Button onClick={() => setShowAllRecommendations(true)} fullWidth>
-              See More
-            </Button>
-          </Box>
-        )}
-        {showAllRecommendations && (
-          <Box paddingBlockStart="2">
-            <Button onClick={() => setShowAllRecommendations(false)} fullWidth>
-              See Less
-            </Button>
-          </Box>
-        )}
-      </>
-    );
-  };
+  const summaryCards = useMemo(() => ([
+    {
+      title: 'Revenue Generated by Size Buddy',
+      value: formatCurrency(analyticsData.summary.totalRevenue, analyticsData.summary.currency),
+      subtitle: 'Attributed revenue from purchased Size Buddy recommendations.',
+    },
+    {
+      title: 'Total Recommendations',
+      value: String(analyticsData.summary.totalRecommendations || 0),
+      subtitle: 'Total number of size recommendations across all products.',
+    },
+    {
+      title: 'Store Average: Rec -> Add-to-Cart %',
+      value: formatPercent(analyticsData.summary.recommendationToAddToCartRate),
+      subtitle: 'Available recommendations only. Sold-out and unavailable recommendations are excluded.',
+    },
+    {
+      title: 'Store Average: Rec -> Purchase %',
+      value: formatPercent(analyticsData.summary.recommendationToPurchaseRate),
+      subtitle: 'Attributed purchases from available Size Buddy recommendations.',
+    },
+  ]), [analyticsData.summary]);
+
+  const filteredProducts = useMemo(() => {
+    const query = searchValue.trim().toLowerCase();
+    if (!query) return analyticsData.productPerformance;
+
+    return analyticsData.productPerformance.filter((product) => {
+      const title = String(product?.product_title || '').toLowerCase();
+      const handle = String(product?.product_handle || '').toLowerCase();
+      return title.includes(query) || handle.includes(query);
+    });
+  }, [analyticsData.productPerformance, searchValue]);
+
+  const visibleProducts = useMemo(() => {
+    return showAllProducts ? filteredProducts : filteredProducts.slice(0, 5);
+  }, [filteredProducts, showAllProducts]);
+
+  const productRows = useMemo(() => {
+    return visibleProducts.map((product) => {
+      const soldOutCount = Number(product?.sold_out_recommendations || 0);
+
+      return [
+        <Box key={`product-${product.product_id}`}>
+          <Text as="p" variant="bodyMd" fontWeight="semibold">
+            {product.product_title || 'Unknown Product'}
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            {product.product_handle ? `/${product.product_handle}` : 'No handle'}
+          </Text>
+        </Box>,
+        <Text key={`recommendations-${product.product_id}`} as="span" variant="bodyMd" fontWeight="medium">
+          {String(product.total_recommendations || 0)}
+        </Text>,
+        <Box key={`atc-${product.product_id}`}>
+          <Text as="p" variant="bodyMd" fontWeight="medium">
+            {formatPercent(product.rec_to_add_to_cart_rate)}
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            {`${product.add_to_cart_total || 0} of ${product.available_recommendations || 0} available recommendations`}
+          </Text>
+        </Box>,
+        soldOutCount > 0 ? (
+          <Button key={`soldout-${product.product_id}`} plain onClick={() => setSoldOutModalProduct(product)}>
+            {soldOutCount}
+          </Button>
+        ) : (
+          <Text key={`soldout-${product.product_id}`} as="span" variant="bodyMd" tone="subdued">
+            0
+          </Text>
+        ),
+        <Box key={`purchase-${product.product_id}`}>
+          <Text as="p" variant="bodyMd" fontWeight="medium">
+            {formatPercent(product.rec_to_purchase_rate)}
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            {`${product.purchase_total || 0} purchases`}
+          </Text>
+        </Box>,
+      ];
+    });
+  }, [visibleProducts]);
+
+  const hasMoreProducts = filteredProducts.length > 5;
 
   if (isLoading) {
     return (
       <Box padding="4">
         <LegacyCard>
-          <Box padding="4">
+          <Box padding="6">
             <LegacyStack distribution="center">
               <Spinner accessibilityLabel="Loading analytics" size="large" />
             </LegacyStack>
@@ -177,75 +255,183 @@ export function Analytics({ shop, host }) {
     );
   }
 
-  if (error) {
-    return (
-      <Box padding="4">
-        <Banner status="critical">
-          <p>{error}</p>
-        </Banner>
-      </Box>
-    );
-  }
-
   return (
     <>
-      <Box paddingBlockEnd="4">
-        <LegacyCard roundedAbove="sm">
-          <LegacyCard.Section>
-            <Text as="h2" variant="headingLg">
-              Analytics & Insights
-            </Text>
-            <Box paddingBlockStart="3">
-              <Text as="p" variant="bodyMd">
-                See how your size recommendations are helping your customers find their perfect fit. Track engagement and optimize your sizing strategy.
+      {error ? (
+        <Box paddingBlockEnd="4">
+          <Banner tone="critical">
+            <p>{error}</p>
+          </Banner>
+        </Box>
+      ) : null}
+
+      <div style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e1e3e5',
+            borderRadius: 16,
+            padding: 20,
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <Text as="h2" variant="headingLg">
+                Analytics & Insights
               </Text>
-            </Box>
-          </LegacyCard.Section>
-        </LegacyCard>
-      </Box>
-      
+              <div style={{ marginTop: 6 }}>
+                <Text as="p" variant="bodyMd" tone="subdued">
+                  See how Size Buddy is impacting your revenue and conversions.
+                </Text>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 180 }}>
+                <Select
+                  label="Date Range"
+                  labelHidden
+                  options={dateRangeOptions}
+                  value={selectedDateRange}
+                  onChange={setSelectedDateRange}
+                />
+              </div>
+              <Button destructive loading={isResetting} onClick={handleResetData}>
+                Reset Data (Testing)
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 16,
+          marginBottom: 20,
+        }}
+      >
+        {summaryCards.map((card) => (
+          <SummaryCard key={card.title} {...card} />
+        ))}
+      </div>
+
       <LegacyCard>
         <LegacyCard.Section>
-          <LegacyStack distribution="equalSpacing" alignment="center">
-            <Text variant="headingMd" as="h2">
-              Analytics Overview
+          <Text as="h3" variant="headingMd">
+            Product Performance
+          </Text>
+          <div style={{ marginTop: 6 }}>
+            <Text as="p" variant="bodyMd" tone="subdued">
+              Recommendation to add-to-cart excludes recommendations where the recommended size was sold out or unavailable for that product.
             </Text>
-            <Select
-              label="Date Range"
-              options={dateRangeOptions}
-              value={selectedDateRange}
-              onChange={setSelectedDateRange}
-              labelInline
+          </div>
+        </LegacyCard.Section>
+
+        <LegacyCard.Section>
+          <div style={{ maxWidth: 360, marginBottom: 16 }}>
+            <TextField
+              label="Search products"
+              labelHidden
+              value={searchValue}
+              onChange={(value) => {
+                setSearchValue(value);
+                setShowAllProducts(false);
+              }}
+              autoComplete="off"
+              placeholder="Search products"
+              clearButton
+              onClearButtonClick={() => {
+                setSearchValue('');
+                setShowAllProducts(false);
+              }}
             />
-          </LegacyStack>
-        </LegacyCard.Section>
+          </div>
 
-        <LegacyCard.Section>
-          <DataTable
-            columnContentTypes={['text', 'numeric']}
-            headings={['Metric', 'Value']}
-            rows={rows}
-          />
-        </LegacyCard.Section>
+          {productRows.length ? (
+            <>
+              <DataTable
+                columnContentTypes={['text', 'numeric', 'text', 'text', 'text']}
+                headings={[
+                  'Product',
+                  'Total Recommendations',
+                  'Recommendation -> Add to Cart %',
+                  'Recommendations to Sold Out Size',
+                  'Recommendation -> Purchase %',
+                ]}
+                rows={productRows}
+              />
 
-        <LegacyCard.Section>
-          <Text variant="headingMd" as="h3">
-            Top Products by Recommendations
-          </Text>
-          <Box paddingBlockStart="4">
-            {renderTopProductsByRecommendations()}
-          </Box>
-        </LegacyCard.Section>
-
-        <LegacyCard.Section>
-          <Text variant="headingMd" as="h3">
-            Top Products by Views
-          </Text>
-          <Box paddingBlockStart="4">
-            {renderTopProductsByViews()}
-          </Box>
+              {hasMoreProducts ? (
+                <Box paddingBlockStart="4">
+                  <Button onClick={() => setShowAllProducts((current) => !current)}>
+                    {showAllProducts ? 'See less' : 'See more'}
+                  </Button>
+                </Box>
+              ) : null}
+            </>
+          ) : (
+            <Banner tone="info">
+              <p>
+                {filteredProducts.length === 0 && searchValue.trim()
+                  ? 'No products match your search.'
+                  : 'No analytics data is available for this time range yet.'}
+              </p>
+            </Banner>
+          )}
         </LegacyCard.Section>
       </LegacyCard>
+
+      <Modal
+        open={Boolean(soldOutModalProduct)}
+        onClose={() => setSoldOutModalProduct(null)}
+        title={soldOutModalProduct ? `${soldOutModalProduct.product_title} sold-out recommendations` : 'Sold-out recommendations'}
+        primaryAction={{
+          content: 'Close',
+          onAction: () => setSoldOutModalProduct(null),
+        }}
+      >
+        <Modal.Section>
+          {soldOutModalProduct && soldOutModalProduct.sold_out_breakdown?.length ? (
+            <div style={{ display: 'grid', gap: 12 }}>
+              {soldOutModalProduct.sold_out_breakdown.map((item) => (
+                <div
+                  key={`${soldOutModalProduct.product_id}-${item.size}`}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    background: '#f6f6f7',
+                  }}
+                >
+                  <Text as="span" variant="bodyMd" fontWeight="medium">
+                    Size {item.size}
+                  </Text>
+                  <Text as="span" variant="bodyMd" tone="subdued">
+                    {item.count}
+                  </Text>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Text as="p" variant="bodyMd" tone="subdued">
+              No sold-out recommendation breakdown is available for this product.
+            </Text>
+          )}
+        </Modal.Section>
+      </Modal>
     </>
   );
-} 
+}
