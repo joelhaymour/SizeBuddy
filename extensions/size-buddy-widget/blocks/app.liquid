@@ -14,7 +14,7 @@
       // Load the bundled theme app extension asset directly from Shopify CDN
       {% assign sb_asset = "size-buddy-v4.js" | asset_url %}
       const script = document.createElement('script');
-      script.src = '{{ sb_asset }}' + ('{{ sb_asset }}'.indexOf('?') >= 0 ? '&' : '?') + 'v=analytics1';
+      script.src = '{{ sb_asset }}' + ('{{ sb_asset }}'.indexOf('?') >= 0 ? '&' : '?') + 'v=onepieces1';
       script.async = true;
       
       // Add load event listener to ensure script is fully loaded

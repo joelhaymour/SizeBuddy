@@ -185,6 +185,41 @@ export const defaultSizeCharts = {
       ]
     }
   },
+  onepieces: {
+    regular: {
+      name: "One Pieces - Normal Fit",
+      sizes: [
+        { size: "XS", hip: "32-35", cup_size: "A-B" },
+        { size: "S", hip: "35-38", cup_size: "B-C" },
+        { size: "M", hip: "38-41", cup_size: "C-D" },
+        { size: "L", hip: "41-44", cup_size: "D-DD" },
+        { size: "XL", hip: "44-47", cup_size: "DD-DDD" },
+        { size: "XXL", hip: "47-51", cup_size: "DDD-F" }
+      ]
+    },
+    slim: {
+      name: "One Pieces - Small Fit",
+      sizes: [
+        { size: "XS", hip: "32-35", cup_size: "A-B" },
+        { size: "S", hip: "32-35", cup_size: "A-B" },
+        { size: "M", hip: "35-38", cup_size: "B-C" },
+        { size: "L", hip: "38-41", cup_size: "C-D" },
+        { size: "XL", hip: "41-44", cup_size: "D-DD" },
+        { size: "XXL", hip: "44-47", cup_size: "DD-DDD" }
+      ]
+    },
+    loose: {
+      name: "One Pieces - Large Fit",
+      sizes: [
+        { size: "XS", hip: "35-38", cup_size: "B-C" },
+        { size: "S", hip: "38-41", cup_size: "C-D" },
+        { size: "M", hip: "41-44", cup_size: "D-DD" },
+        { size: "L", hip: "44-47", cup_size: "DD-DDD" },
+        { size: "XL", hip: "47-51", cup_size: "DDD-F" },
+        { size: "XXL", hip: "47-51", cup_size: "DDD-F" }
+      ]
+    }
+  },
   "Bikini Tops / Bras": {
     regular: {
       name: "Bikini Top - Normal Fit",

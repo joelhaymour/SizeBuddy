@@ -52,51 +52,6 @@ async function runMigrations() {
       await db.run(`CREATE INDEX IF NOT EXISTS idx_reco_shop ON size_recommendation_analytics(shop)`);
     }
 
-    const recommendationTokenExists = recoInfo.some(c => c.name === 'recommendation_token');
-    if (!recommendationTokenExists) {
-      await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN recommendation_token TEXT`);
-    }
-
-    const availabilityStatusExists = recoInfo.some(c => c.name === 'availability_status');
-    if (!availabilityStatusExists) {
-      await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN availability_status TEXT DEFAULT 'available'`);
-      await db.run(`UPDATE size_recommendation_analytics SET availability_status = 'available' WHERE availability_status IS NULL`);
-    }
-
-    const variantIdExists = recoInfo.some(c => c.name === 'variant_id');
-    if (!variantIdExists) {
-      await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN variant_id TEXT`);
-    }
-
-    const addedToCartAtExists = recoInfo.some(c => c.name === 'added_to_cart_at');
-    if (!addedToCartAtExists) {
-      await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN added_to_cart_at DATETIME`);
-    }
-
-    await db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reco_token_unique ON size_recommendation_analytics(recommendation_token)`);
-    await db.run(`CREATE INDEX IF NOT EXISTS idx_reco_availability_status ON size_recommendation_analytics(availability_status)`);
-
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS size_buddy_purchase_analytics (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        shop TEXT NOT NULL,
-        order_id TEXT NOT NULL,
-        order_name TEXT,
-        line_item_id TEXT NOT NULL,
-        recommendation_token TEXT NOT NULL,
-        product_id TEXT,
-        variant_id TEXT,
-        recommended_size TEXT,
-        quantity INTEGER DEFAULT 1,
-        revenue_amount REAL DEFAULT 0,
-        currency TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_size_buddy_purchase_order_line ON size_buddy_purchase_analytics(order_id, line_item_id);
-      CREATE INDEX IF NOT EXISTS idx_size_buddy_purchase_shop_created ON size_buddy_purchase_analytics(shop, created_at);
-      CREATE INDEX IF NOT EXISTS idx_size_buddy_purchase_reco_token ON size_buddy_purchase_analytics(recommendation_token);
-    `);
-
     // Check if the columns exist
     const tableInfo = await db.all(`PRAGMA table_info(chart_sizes)`);
     const scoreColumnExists = tableInfo.some(column => column.name === 'score');
@@ -156,6 +111,63 @@ async function runMigrations() {
       console.log('custom_size_chart_image column added successfully.');
     } else {
       console.log('custom_size_chart_image column already exists in size_charts table.');
+    }
+
+    const sizeChartsSchema = await db.get(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'size_charts'`);
+    const supportsOnePiecesCategory = typeof sizeChartsSchema?.sql === 'string' && sizeChartsSchema.sql.includes("'onepieces'");
+    if (!supportsOnePiecesCategory) {
+      console.log('Refreshing size_charts table to support onepieces category...');
+      await db.exec(`
+        PRAGMA foreign_keys = OFF;
+        BEGIN TRANSACTION;
+        CREATE TABLE size_charts_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          shop_domain TEXT NOT NULL,
+          name TEXT NOT NULL,
+          category TEXT CHECK(category IN ('tops', 'bottoms', 'bikinis', 'dresses', 'onepieces')) NOT NULL,
+          subcategory TEXT,
+          fit_type TEXT NOT NULL,
+          chart_data TEXT NOT NULL,
+          optional_measurements TEXT,
+          custom_size_chart_image TEXT,
+          locked INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO size_charts_new (
+          id,
+          shop_domain,
+          name,
+          category,
+          subcategory,
+          fit_type,
+          chart_data,
+          optional_measurements,
+          custom_size_chart_image,
+          locked,
+          created_at,
+          updated_at
+        )
+        SELECT
+          id,
+          shop_domain,
+          name,
+          category,
+          subcategory,
+          fit_type,
+          chart_data,
+          optional_measurements,
+          custom_size_chart_image,
+          locked,
+          created_at,
+          updated_at
+        FROM size_charts;
+        DROP TABLE size_charts;
+        ALTER TABLE size_charts_new RENAME TO size_charts;
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+      `);
+      console.log('size_charts category constraint updated successfully.');
     }
 
     console.log('Migrations completed successfully.');

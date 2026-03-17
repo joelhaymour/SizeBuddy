@@ -229,7 +229,6 @@
     let cachedProductVariants = null;
     let cachedProductHandle = null;
     let productVariantsPromise = null;
-    let latestRecommendationContext = null;
     
     function getCurrentProductHandle() {
       if (cachedProductHandle) return cachedProductHandle;
@@ -662,13 +661,13 @@
       buttonEl.outerHTML = getAtcNoticeMarkup(message, tone);
     }
     
-    function getRecommendedSizeCtaMarkup(sizeLabel, state) {
-      const resolvedState = state || getRecommendedSizePurchaseState(sizeLabel);
-      if (resolvedState.status === 'sold_out') {
+    function getRecommendedSizeCtaMarkup(sizeLabel) {
+      const state = getRecommendedSizePurchaseState(sizeLabel);
+      if (state.status === 'sold_out') {
         return getAtcNoticeMarkup('Size ' + sizeLabel + ' is sold out for this product.', 'warning');
       }
       
-      if (resolvedState.status === 'size_not_available') {
+      if (state.status === 'size_not_available') {
         return getAtcNoticeMarkup('Size ' + sizeLabel + ' is not available for this product.', 'error');
       }
       
@@ -697,11 +696,7 @@
     
     // Helper: add recommended size to cart via AJAX only
     async function addRecommendedSizeToCart(bestSize, buttonEl) {
-      const recommendation = typeof bestSize === 'object' && bestSize
-        ? bestSize
-        : ((latestRecommendationContext && latestRecommendationContext.size === bestSize) ? latestRecommendationContext : { size: bestSize });
-      const sizeLabel = recommendation && recommendation.size ? recommendation.size : bestSize;
-      if (!sizeLabel) return;
+      if (!bestSize) return;
       try {
         await ensureProductVariantsLoaded();
         if (buttonEl) {
@@ -711,27 +706,17 @@
           buttonEl.style.transform = 'translateY(0) scale(0.99)';
         }
         
-        const selection = await selectSizeOnProductForm(sizeLabel);
+        const selection = await selectSizeOnProductForm(bestSize);
         if (selection.status === 'sold_out') {
-          const error = new Error('Size ' + sizeLabel + ' is sold out for this product.');
+          const error = new Error('Size ' + bestSize + ' is sold out for this product.');
           error.code = 'sold_out';
           throw error;
         }
         
         if (selection.status === 'size_not_available' || !selection.variantId) {
-          const error = new Error('Size ' + sizeLabel + ' is not available for this product.');
+          const error = new Error('Size ' + bestSize + ' is not available for this product.');
           error.code = 'size_not_available';
           throw error;
-        }
-
-        const addToCartPayload = { id: selection.variantId, quantity: 1 };
-        if (recommendation && recommendation.token) {
-          addToCartPayload.properties = {
-            _size_buddy_recommendation_token: recommendation.token,
-            _size_buddy_chart_id: String(recommendation.chartId || ''),
-            _size_buddy_recommended_size: String(sizeLabel),
-            _size_buddy_product_id: String(recommendation.productId || ''),
-          };
         }
         
         const resp = await fetch('/cart/add.js', {
@@ -740,7 +725,7 @@
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify(addToCartPayload)
+          body: JSON.stringify({ id: selection.variantId, quantity: 1 })
         });
         
         if (!resp.ok) {
@@ -763,11 +748,6 @@
         }
         
         await resp.json();
-        try {
-          await logRecommendationAddToCart(recommendation, selection.variantId);
-        } catch (logError) {
-          console.warn('Size Buddy: add to cart analytics logging failed', logError);
-        }
         animateAtcButtonSuccess(buttonEl);
         
         document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
@@ -777,17 +757,17 @@
         console.error('Size Buddy: error adding recommended size to cart', error);
         if (buttonEl) {
           if (error.code === 'sold_out') {
-            replaceAtcButtonWithMessage(buttonEl, 'Size ' + sizeLabel + ' is sold out for this product.', 'warning');
+            replaceAtcButtonWithMessage(buttonEl, 'Size ' + bestSize + ' is sold out for this product.', 'warning');
             return;
           }
           
           if (error.code === 'size_not_available') {
-            replaceAtcButtonWithMessage(buttonEl, 'Size ' + sizeLabel + ' is not available for this product.', 'error');
+            replaceAtcButtonWithMessage(buttonEl, 'Size ' + bestSize + ' is not available for this product.', 'error');
             return;
           }
           
           buttonEl.disabled = false;
-          buttonEl.textContent = 'Add Size ' + sizeLabel + ' to Cart';
+          buttonEl.textContent = 'Add Size ' + bestSize + ' to Cart';
           buttonEl.style.opacity = '1';
           buttonEl.style.transform = 'translateY(0)';
         }
@@ -1658,8 +1638,11 @@
         // Check if this is a tops category chart and we have height and weight
         const isTopsCategory = chart.category && chart.category.toLowerCase() === 'tops';
         const isBottomsCategory = chart.category && chart.category.toLowerCase() === 'bottoms';
+        const normalizedChartCategory = chart.category ? chart.category.toLowerCase().replace(/[\s_-]/g, '') : '';
+        const isOnePiecesCategory = normalizedChartCategory === 'onepieces';
         const hasHeightAndWeight = userMeasurements.height && userMeasurements.weight;
         const hasWaistAndHip = userMeasurements.waist && userMeasurements.hip;
+        const hasHipAndCup = userMeasurements.hip && userMeasurements.cup_size;
         
         // Tops sizing: rule-guided scoring that avoids undersizing near top-of-range
         if (isTopsCategory && hasHeightAndWeight) {
@@ -1815,6 +1798,93 @@
           if (chosen) {
             bestSize = chosen.name;
             bestScore = 1;
+          }
+        } else if (isOnePiecesCategory && hasHipAndCup) {
+          const order = ['XS','S','M','L','XL','XXL'];
+          const cupOrder = ['A','B','C','D','DD','DDD','F','G','H+'];
+          const parseCupIndex = (value) => {
+            if (typeof value !== 'string') return null;
+            const normalizedValue = value.trim().toUpperCase();
+            const idx = cupOrder.indexOf(normalizedValue);
+            return idx >= 0 ? idx : null;
+          };
+          const parseCupRange = (value) => {
+            if (typeof value !== 'string' || !value.includes('-')) return null;
+            const [minCup, maxCup] = value.split('-').map((part) => part.trim().toUpperCase());
+            const minIndex = parseCupIndex(minCup);
+            const maxIndex = parseCupIndex(maxCup);
+            if (minIndex === null || maxIndex === null) return null;
+            return [Math.min(minIndex, maxIndex), Math.max(minIndex, maxIndex)];
+          };
+
+          const userHip = parseFloat(userMeasurements.hip);
+          const userCupIndex = parseCupIndex(String(userMeasurements.cup_size));
+          const candidates = [];
+
+          chart.sizes.forEach((size) => {
+            const sizeName = size.size || size.name;
+            let hipMin = NaN;
+            let hipMax = NaN;
+            let hipScore = 0;
+            let cupScore = 0;
+
+            if (size.hip && typeof size.hip === 'string' && size.hip.includes('-')) {
+              [hipMin, hipMax] = size.hip.split('-').map((value) => parseFloat(value.trim()));
+              if (!isNaN(hipMin) && !isNaN(hipMax)) {
+                const hipHalf = ((hipMax - hipMin) || 1) / 2;
+                const hipCenter = (hipMin + hipMax) / 2;
+                const hipInside = userHip >= hipMin && userHip <= hipMax;
+
+                if (hipInside) {
+                  const base = Math.max(0, 1 - (Math.abs(userHip - hipCenter) / hipHalf));
+                  hipScore = 0.65 + (0.35 * base);
+                } else if (userHip > hipMax) {
+                  const excess = userHip - hipMax;
+                  const range = hipMax - hipMin;
+                  const excessRatio = excess / (range || 1);
+                  hipScore = Math.max(0, 0.2 - (excessRatio * 0.2));
+                } else {
+                  const base = Math.max(0, 1 - (Math.abs(userHip - hipCenter) / hipHalf));
+                  hipScore = base * 0.55;
+                }
+              }
+            }
+
+            const cupRange = parseCupRange(size.cup_size);
+            if (cupRange && userCupIndex !== null) {
+              const [cupMin, cupMax] = cupRange;
+              if (userCupIndex >= cupMin && userCupIndex <= cupMax) {
+                cupScore = 1;
+              } else {
+                const distance = userCupIndex < cupMin ? (cupMin - userCupIndex) : (userCupIndex - cupMax);
+                cupScore = Math.max(0, 1 - (distance / 2));
+              }
+            }
+
+            const hipExceedsMax = !isNaN(hipMax) && userHip > hipMax;
+            const nearUpperHip = !isNaN(hipMin) && !isNaN(hipMax) && userHip >= (hipMin + (0.75 * (hipMax - hipMin)));
+            const nearUpperCup = cupRange && userCupIndex !== null && userCupIndex >= (cupRange[0] + (0.75 * (cupRange[1] - cupRange[0])));
+            const matchScore = hipExceedsMax ? 0 : Math.min(1, (0.65 * hipScore) + (0.35 * cupScore) + (nearUpperHip ? 0.08 : 0) + (nearUpperCup ? 0.04 : 0));
+
+            candidates.push({
+              name: sizeName,
+              score: matchScore,
+              nearUpperHip,
+              nearUpperCup,
+              hipExceedsMax
+            });
+          });
+
+          if (candidates.length) {
+            candidates.sort((a, b) => b.score - a.score || order.indexOf(a.name) - order.indexOf(b.name));
+            const topScore = candidates[0].score;
+            const close = candidates.filter((candidate) => candidate.score >= topScore - 0.03);
+            const withUpper = close.filter((candidate) => candidate.nearUpperHip || candidate.nearUpperCup);
+            const pickFrom = withUpper.length ? withUpper : close;
+            pickFrom.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+            const chosen = pickFrom[pickFrom.length - 1];
+            bestSize = chosen.name;
+            bestScore = chosen.score;
           }
         } else {
           // Regular size calculation for other products
@@ -2018,17 +2088,6 @@
         
         if (bestSize) {
           console.log(`Selected ${bestSize} with score ${bestScore.toFixed(2)}`);
-          const purchaseState = getRecommendedSizePurchaseState(bestSize);
-          latestRecommendationContext = {
-            token: generateRecommendationToken(),
-            chartId: chart.id,
-            productId,
-            shopDomain,
-            size: bestSize,
-            measurements: userMeasurements,
-            availabilityStatus: purchaseState.status || 'available',
-            variantId: purchaseState.variantId || null,
-          };
           
           // Create animation container with enhanced styling, animations, and add-to-cart button
           resultDiv.innerHTML = 
@@ -2036,7 +2095,7 @@
               '<div class="size-buddy-title" style="font-size:18px;color:#333;margin-bottom:15px;opacity:0;transform:translateY(10px);">Your Recommended Size</div>' +
               '<div class="size-buddy-size" style="font-size:42px;font-weight:700;color:#4caf50;margin:20px 0;opacity:0;transform:scale(0.9);">' + bestSize + '</div>' +
               '<p class="size-buddy-message" style="color:#666;margin:15px 0 20px;opacity:0;transform:translateY(10px);">Based on your measurements, we recommend size ' + bestSize + '.</p>' +
-              getRecommendedSizeCtaMarkup(bestSize, purchaseState) +
+              getRecommendedSizeCtaMarkup(bestSize) +
             '</div>';
             
             // Add enhanced animation styles
@@ -2087,13 +2146,16 @@
             // Attach add-to-cart handler
             const atcBtn = document.getElementById('size-buddy-add-to-cart');
             if (atcBtn) {
-              const currentRecommendation = latestRecommendationContext;
-              atcBtn.addEventListener('click', () => addRecommendedSizeToCart(currentRecommendation, atcBtn));
+              atcBtn.addEventListener('click', () => addRecommendedSizeToCart(bestSize, atcBtn));
             }
             requestAnimationFrame(() => scrollRecommendedCardIntoView());
             
-            console.log('About to log recommendation:', latestRecommendationContext);
-            logSizeRecommendation(latestRecommendationContext);
+            // --- ALWAYS log recommendation for all product types ---
+            if (!window.sizeBuddyRecommendationLogged[productId]) {
+              window.sizeBuddyRecommendationLogged[productId] = true;
+              console.log('About to log recommendation:', { chartId: chart.id, bestSize, userMeasurements, shopDomain, productId });
+              logSizeRecommendation(chart.id, bestSize, userMeasurements, shopDomain, productId);
+            }
             return;
         } else {
           resultDiv.innerHTML = '<div style="color:#ff5252;padding:15px;background:#fff8f8;border-radius:8px;text-align:center;margin:15px auto;max-width:400px;box-shadow:0 2px 4px rgba(0,0,0,0.05);">Unable to determine a size recommendation</div>';
@@ -2371,82 +2433,10 @@
     }
   }
   
-  function generateRecommendationToken() {
-    return 'sb-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
-  }
-
-  async function logRecommendationAddToCart(recommendation, variantId) {
-    if (!recommendation || !recommendation.token || !recommendation.shopDomain) return;
-    const payload = {
-      shop: recommendation.shopDomain,
-      recommendation_token: recommendation.token,
-      variant_id: variantId || recommendation.variantId || null,
-      product_id: recommendation.productId,
-      chart_id: recommendation.chartId,
-      recommended_size: recommendation.size,
-    };
-
-    const w = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
-    const backendBase = (w && w.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
-    const backendUrl = (backendBase || '').replace(/\/$/, '');
-    let logSuccess = false;
-
-    try {
-      const response = await fetch(`${backendUrl}/api/log-add-to-cart`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
-      if (response.ok) {
-        logSuccess = true;
-      }
-    } catch (error) {
-      console.warn('Size Buddy: direct add-to-cart log failed', error);
-    }
-
-    if (!logSuccess) {
-      try {
-        await fetch(`https://${recommendation.shopDomain}/apps/size-buddy/api/proxy/log-add-to-cart`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload)
-        });
-      } catch (error) {
-        console.warn('Size Buddy: proxy add-to-cart log failed', error);
-      }
-    }
-  }
-
   // Function to log size recommendations for analytics
   async function logSizeRecommendation(chartId, recommendedSize, measurements, shopDomain, productId) {
     try {
-      const payload = (chartId && typeof chartId === 'object' && !Array.isArray(chartId))
-        ? {
-            shop: chartId.shopDomain || chartId.shop || shopDomain,
-            product_id: chartId.productId || chartId.product_id || productId,
-            chart_id: chartId.chartId || chartId.chart_id,
-            recommended_size: chartId.size || chartId.recommended_size || recommendedSize,
-            measurements: chartId.measurements || measurements || {},
-            recommendation_token: chartId.token || chartId.recommendation_token || null,
-            availability_status: chartId.availabilityStatus || chartId.availability_status || 'available',
-            variant_id: chartId.variantId || chartId.variant_id || null,
-          }
-        : {
-            shop: shopDomain,
-            product_id: productId,
-            chart_id: chartId,
-            recommended_size: recommendedSize,
-            measurements: measurements || {},
-            recommendation_token: null,
-            availability_status: 'available',
-            variant_id: null,
-          };
-
-      console.log('logSizeRecommendation called with:', payload);
+      console.log('logSizeRecommendation called with:', { chartId, recommendedSize, measurements, shopDomain, productId });
       const w = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
       const backendBase = (w && w.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
       const backendUrl = (backendBase || '').replace(/\/$/, '');
@@ -2460,7 +2450,13 @@
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+              shop: shopDomain,
+              product_id: productId,
+              chart_id: chartId,
+              recommended_size: recommendedSize,
+              measurements: measurements
+            })
           });
           if (response.ok) {
             console.log('Successfully logged recommendation to direct backend');
@@ -2473,15 +2469,22 @@
           console.log(`Failed to log to ${backendUrl}:`, error);
         }
       }
+      // If direct backend failed, try app proxy
       if (!logSuccess) {
         console.log('Falling back to app proxy for logging');
         try {
-          const response = await fetch(`https://${payload.shop}/apps/size-buddy/api/proxy/log-recommendation`, {
+          const response = await fetch(`https://${shopDomain}/apps/size-buddy/api/proxy/log-recommendation`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+              shop: shopDomain,
+              product_id: productId,
+              chart_id: chartId,
+              recommended_size: recommendedSize,
+              measurements: measurements
+            })
           });
           if (response.ok) {
             console.log('Successfully logged recommendation to app proxy');

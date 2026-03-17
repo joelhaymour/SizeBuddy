@@ -777,6 +777,15 @@ export function SizeRecommendation({ shop, host }) {
           </Button>
         </Card>
       </Grid.Cell>
+      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
+        <Card sectioned>
+          <Button fullWidth onClick={() => handleCategorySelect('onepieces')}>
+            <Box padding="4" alignment="center">
+              <Text variant="headingMd" as="h3">One Pieces</Text>
+            </Box>
+          </Button>
+        </Card>
+      </Grid.Cell>
     </Grid>
   );
 
@@ -1252,6 +1261,17 @@ export function SizeRecommendation({ shop, host }) {
             </Box>
           ]
         ];
+      } else if (selectedCategory === 'onepieces') {
+        measurementRows = [
+          [
+            <Box key={`hip-${sizeIndex}`} width="50%" paddingInlineEnd="2">
+              {renderMeasurementSlider(sizeIndex, 'hip', size.hip, 'Hip (in)', 32, 56)}
+            </Box>,
+            <Box key={`cup-size-${sizeIndex}`} width="50%" paddingInlineStart="2">
+              {renderMeasurementSlider(sizeIndex, 'cup_size', size.cup_size, 'Cup Size', 0, 8, 1)}
+            </Box>
+          ]
+        ];
       }
       
       return {
@@ -1646,7 +1666,13 @@ export function SizeRecommendation({ shop, host }) {
                               {item.name}
                             </Text>
                             <LegacyStack>
-                              <Badge status="info">{item.category}</Badge>
+                              <Badge status="info">
+                                {item.category === 'bikinis'
+                                  ? 'Bikini Tops / Bras'
+                                  : item.category === 'onepieces'
+                                    ? 'One Pieces'
+                                    : item.category}
+                              </Badge>
                               <Badge status="success">
                                 {item.fit_type === 'slim' ? 'Small Fit' : item.fit_type === 'regular' ? 'Standard Fit' : item.fit_type === 'loose' ? 'Large Fit' : item.fit_type + ' Fit'}
                               </Badge>
@@ -1713,7 +1739,7 @@ export function SizeRecommendation({ shop, host }) {
               <Box paddingBlockStart="3">
                 <LegacyStack vertical spacing="3">
                   <Text as="p" variant="bodyMd">
-                    1. Choose a category (Tops, Bottoms, Dresses, or Bikini Tops / Bras)
+                    1. Choose a category (Tops, Bottoms, Dresses, Bikini Tops / Bras, or One Pieces)
                   </Text>
                   <Text as="p" variant="bodyMd">
                     2. Name your size recommendation

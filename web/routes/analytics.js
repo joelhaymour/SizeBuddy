@@ -51,6 +51,9 @@ function getDateRange(range) {
     case 'last90days':
       now.setDate(now.getDate() - 90);
       return now;
+    case 'last365days':
+      now.setDate(now.getDate() - 365);
+      return now;
     case 'last7days':
     default:
       now.setDate(now.getDate() - 7);

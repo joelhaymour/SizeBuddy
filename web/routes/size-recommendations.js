@@ -253,6 +253,7 @@ router.post('/api/size-recommendations', async (req, res) => {
     if (typeof category === 'string') {
       const c = category.toLowerCase();
       if (c.includes('bikini')) normalizedCategory = 'bikinis';
+      else if (c.includes('one piece') || c.includes('one-piece') || c.includes('onepiece')) normalizedCategory = 'onepieces';
       else if (c.includes('top')) normalizedCategory = 'tops';
       else if (c.includes('bottom')) normalizedCategory = 'bottoms';
       else if (c.includes('dress')) normalizedCategory = 'dresses';
@@ -354,6 +355,15 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
     const customSizeChartImage = typeof custom_size_chart_image === 'string' && custom_size_chart_image.trim()
       ? custom_size_chart_image.trim()
       : null;
+    let normalizedCategory = category;
+    if (typeof category === 'string') {
+      const c = category.toLowerCase();
+      if (c.includes('bikini')) normalizedCategory = 'bikinis';
+      else if (c.includes('one piece') || c.includes('one-piece') || c.includes('onepiece')) normalizedCategory = 'onepieces';
+      else if (c.includes('top')) normalizedCategory = 'tops';
+      else if (c.includes('bottom')) normalizedCategory = 'bottoms';
+      else if (c.includes('dress')) normalizedCategory = 'dresses';
+    }
 
     // Update the size recommendation
     await req.app.locals.db.run(
@@ -370,7 +380,7 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
       [
         chart_name,
         JSON.stringify(chart_data),
-        category,
+        normalizedCategory,
         subcategory || "",
         fit_type,
         optional_measurements_json,
