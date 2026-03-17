@@ -109,6 +109,30 @@ export function SizeRecommendation({ shop, host }) {
   const [customSizeChartImage, setCustomSizeChartImage] = useState('');
   const [customSizeChartImageName, setCustomSizeChartImageName] = useState('');
 
+  const fullShopDomain = useMemo(() => {
+    if (!shop) return '';
+    return shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
+  }, [shop]);
+
+  const isRecommendationLocked = useCallback((recommendation) => {
+    const lockedValue = recommendation?.locked;
+    return Boolean(lockedValue && lockedValue !== 0 && lockedValue !== '0' && lockedValue !== false);
+  }, []);
+
+  const lockedRecommendations = useMemo(
+    () => sizeRecommendations.filter((recommendation) => isRecommendationLocked(recommendation)),
+    [isRecommendationLocked, sizeRecommendations]
+  );
+
+  const navigateToPlans = useCallback(() => {
+    if (!fullShopDomain || !host) {
+      navigate('/plans');
+      return;
+    }
+
+    navigate(`/plans?shop=${encodeURIComponent(fullShopDomain)}&host=${encodeURIComponent(host)}`);
+  }, [fullShopDomain, host, navigate]);
+
   // Add custom styles for the modal
   useEffect(() => {
     // Create a style element
@@ -208,11 +232,10 @@ export function SizeRecommendation({ shop, host }) {
 
   // Fetch existing size charts
   const fetchSizeRecommendations = useCallback(async () => {
+    if (!fullShopDomain) return;
+
     setIsLoading(true);
     try {
-      // Ensure shop parameter has full domain
-      const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
-      
       console.log(`Fetching size recommendations for shop: ${fullShopDomain}`);
       
       // Include shop parameter in URL
@@ -248,7 +271,7 @@ export function SizeRecommendation({ shop, host }) {
     } finally {
       if (isMounted.current) setIsLoading(false);
     }
-  }, [fetch, shop]);
+  }, [fetch, fullShopDomain]);
 
   useEffect(() => {
     fetchSizeRecommendations();
@@ -463,6 +486,15 @@ export function SizeRecommendation({ shop, host }) {
 
   const handleEdit = async (chart) => {
     console.log('Editing chart:', chart);
+
+    if (isRecommendationLocked(chart)) {
+      setToastProps({
+        content: 'This size recommendation is locked on your current plan. Upgrade to edit it again.',
+        error: true
+      });
+      setShowToast(true);
+      return;
+    }
     
     setEditingRecommendationId(chart.id);
     setChartName(chart.name);
@@ -633,9 +665,6 @@ export function SizeRecommendation({ shop, host }) {
         });
       }
 
-      // Ensure full shop domain is used
-      const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
-
       const requestData = {
         shop: fullShopDomain,
         chart_name: chartName,
@@ -694,10 +723,17 @@ export function SizeRecommendation({ shop, host }) {
         error: false
       });
       setShowToast(true);
+      setLimitBanner(false);
       handleModalClose();
       fetchSizeRecommendations();
     } catch (error) {
       console.error('Error saving size recommendation:', error);
+
+      if (error.message.includes('Plan limit reached') || error.message.includes('locked on your current plan')) {
+        await fetchSizeRecommendations();
+        setLimitBanner(true);
+      }
+
       setToastProps({
         content: `Error saving size recommendation: ${error.message}`,
         error: true
@@ -708,9 +744,6 @@ export function SizeRecommendation({ shop, host }) {
 
   const handleDelete = async (chartId) => {
     try {
-      // Ensure full shop domain is used
-      const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
-      
       const response = await fetch(`/api/size-recommendations/${chartId}?shop=${fullShopDomain}`, {
         method: 'DELETE',
         headers: {
@@ -728,6 +761,7 @@ export function SizeRecommendation({ shop, host }) {
         error: false
       });
       setShowToast(true);
+      setLimitBanner(false);
       fetchSizeRecommendations();
     } catch (error) {
       console.error('Error deleting size recommendation:', error);
@@ -739,55 +773,69 @@ export function SizeRecommendation({ shop, host }) {
     }
   };
 
-  const renderCategorySelection = () => (
-    <Grid>
-      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-        <Card sectioned>
-          <Button fullWidth onClick={() => handleCategorySelect('tops')}>
-            <Box padding="4" alignment="center">
-              <Text variant="headingMd" as="h3">Tops</Text>
-            </Box>
-          </Button>
-        </Card>
-      </Grid.Cell>
-      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-        <Card sectioned>
-          <Button fullWidth onClick={() => handleCategorySelect('bottoms')}>
-            <Box padding="4" alignment="center">
-              <Text variant="headingMd" as="h3">Bottoms</Text>
-            </Box>
-          </Button>
-        </Card>
-      </Grid.Cell>
-      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-        <Card sectioned>
-          <Button fullWidth onClick={() => handleCategorySelect('dresses')}>
-            <Box padding="4" alignment="center">
-              <Text variant="headingMd" as="h3">Dresses</Text>
-            </Box>
-          </Button>
-        </Card>
-      </Grid.Cell>
-      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-        <Card sectioned>
-          <Button fullWidth onClick={() => handleCategorySelect('Bikini Tops / Bras')}>
-            <Box padding="4" alignment="center">
-              <Text variant="headingMd" as="h3">Bikini Tops / Bras</Text>
-            </Box>
-          </Button>
-        </Card>
-      </Grid.Cell>
-      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-        <Card sectioned>
-          <Button fullWidth onClick={() => handleCategorySelect('onepieces')}>
-            <Box padding="4" alignment="center">
-              <Text variant="headingMd" as="h3">One Pieces</Text>
-            </Box>
-          </Button>
-        </Card>
-      </Grid.Cell>
-    </Grid>
-  );
+  const renderCategorySelection = () => {
+    const categoryOptions = [
+      {
+        value: 'tops',
+        title: 'Tops',
+        subtitle: 'Height and weight',
+      },
+      {
+        value: 'bottoms',
+        title: 'Bottoms',
+        subtitle: 'Waist and hips',
+      },
+      {
+        value: 'dresses',
+        title: 'Dresses',
+        subtitle: 'Dress size',
+      },
+      {
+        value: 'Bikini Tops / Bras',
+        title: 'Bikini Tops / Bras',
+        subtitle: 'Band size and cup size',
+      },
+      {
+        value: 'onepieces',
+        title: 'One Pieces',
+        subtitle: 'Hips and cup size',
+      },
+    ];
+
+    return (
+      <div>
+        <div style={{ marginBottom: '20px' }}>
+          <Text variant="headingMd" as="h3">
+            Choose a product category
+          </Text>
+          <Box paddingBlockStart="1">
+            <Text variant="bodyMd" as="p" color="subdued">
+              Start by picking the type of product you want to build a size recommendation for.
+            </Text>
+          </Box>
+        </div>
+
+        <div className="SizeBuddy-CategoryGrid">
+          {categoryOptions.map((category) => (
+            <button
+              key={category.value}
+              type="button"
+              className="SizeBuddy-CategoryCard"
+              onClick={() => handleCategorySelect(category.value)}
+            >
+              <div className="SizeBuddy-CategoryCard__Accent" />
+              <Text variant="headingMd" as="h3">
+                {category.title}
+              </Text>
+              <Text variant="bodySm" as="p" color="subdued">
+                {category.subtitle}
+              </Text>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   const renderFitTypeSelection = () => (
     <>
@@ -1635,6 +1683,27 @@ export function SizeRecommendation({ shop, host }) {
           </Box>
           <LegacyCard>
             <Box padding="4">
+              {(lockedRecommendations.length > 0 || limitBanner) && (
+                <Box paddingBlockEnd="4">
+                  <Banner
+                    status={lockedRecommendations.length > 0 ? 'warning' : 'critical'}
+                    title={lockedRecommendations.length > 0
+                      ? `${lockedRecommendations.length} size recommendation${lockedRecommendations.length === 1 ? '' : 's'} locked on your current plan`
+                      : 'Plan limit reached'}
+                    action={{
+                      content: 'Upgrade plan',
+                      onAction: navigateToPlans
+                    }}
+                  >
+                    <p>
+                      {lockedRecommendations.length > 0
+                        ? 'Locked size recommendations stay unavailable on your current plan and will automatically unlock if you upgrade again.'
+                        : 'Your current plan has reached its active size recommendation limit. Upgrade to add or unlock more size recommendations.'}
+                    </p>
+                  </Banner>
+                </Box>
+              )}
+
               {sizeRecommendations.length === 0 ? (
                 <EmptyState
                   heading="Create your first size recommendation"
@@ -1658,33 +1727,51 @@ export function SizeRecommendation({ shop, host }) {
                   </Box>
                   <ResourceList
                     items={sizeRecommendations}
-                    renderItem={(item) => (
-                      <ResourceItem id={item.id}>
-                        <LegacyStack distribution="equalSpacing" alignment="center">
-                          <LegacyStack vertical>
-                            <Text variant="bodyMd" as="h3" fontWeight="bold">
-                              {item.name}
-                            </Text>
-                            <LegacyStack>
-                              <Badge status="info">
-                                {item.category === 'bikinis'
-                                  ? 'Bikini Tops / Bras'
-                                  : item.category === 'onepieces'
-                                    ? 'One Pieces'
-                                    : item.category}
-                              </Badge>
-                              <Badge status="success">
-                                {item.fit_type === 'slim' ? 'Small Fit' : item.fit_type === 'regular' ? 'Standard Fit' : item.fit_type === 'loose' ? 'Large Fit' : item.fit_type + ' Fit'}
-                              </Badge>
+                    renderItem={(item) => {
+                      const itemLocked = isRecommendationLocked(item);
+                      const categoryLabel = item.category === 'bikinis'
+                        ? 'Bikini Tops / Bras'
+                        : item.category === 'onepieces'
+                          ? 'One Pieces'
+                          : item.category;
+
+                      return (
+                        <ResourceItem id={item.id}>
+                          <div style={{
+                            opacity: itemLocked ? 0.58 : 1,
+                            filter: itemLocked ? 'grayscale(0.2)' : 'none',
+                            transition: 'opacity 120ms ease'
+                          }}>
+                            <LegacyStack distribution="equalSpacing" alignment="center">
+                              <LegacyStack vertical>
+                                <Text variant="bodyMd" as="h3" fontWeight="bold">
+                                  {item.name}
+                                </Text>
+                                <LegacyStack>
+                                  <Badge status="info">{categoryLabel}</Badge>
+                                  <Badge status="success">
+                                    {item.fit_type === 'slim' ? 'Small Fit' : item.fit_type === 'regular' ? 'Standard Fit' : item.fit_type === 'loose' ? 'Large Fit' : item.fit_type + ' Fit'}
+                                  </Badge>
+                                  {itemLocked && <Badge status="attention">Locked</Badge>}
+                                </LegacyStack>
+                                {itemLocked && (
+                                  <Text variant="bodySm" as="p" color="subdued">
+                                    Locked on your current plan. Upgrade to edit or use this size recommendation again.
+                                  </Text>
+                                )}
+                              </LegacyStack>
+                              <ButtonGroup>
+                                {itemLocked && (
+                                  <Button onClick={navigateToPlans}>Upgrade to unlock</Button>
+                                )}
+                                <Button onClick={() => handleEdit(item)} disabled={itemLocked}>Edit</Button>
+                                <Button destructive onClick={() => handleDelete(item.id)}>Delete</Button>
+                              </ButtonGroup>
                             </LegacyStack>
-                          </LegacyStack>
-                          <ButtonGroup>
-                            <Button onClick={() => handleEdit(item)}>Edit</Button>
-                            <Button destructive onClick={() => handleDelete(item.id)}>Delete</Button>
-                          </ButtonGroup>
-                        </LegacyStack>
-                      </ResourceItem>
-                    )}
+                          </div>
+                        </ResourceItem>
+                      );
+                    }}
                   />
                 </>
               )}
@@ -1804,6 +1891,43 @@ export function SizeRecommendation({ shop, host }) {
         .Polaris-TextField {
           max-width: 100%;
           width: 100%;
+        }
+        .SizeBuddy-CategoryGrid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 16px;
+        }
+        .SizeBuddy-CategoryCard {
+          appearance: none;
+          border: 1px solid #d8dee4;
+          border-radius: 18px;
+          background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
+          padding: 18px 18px 16px;
+          min-height: 138px;
+          text-align: left;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-start;
+          gap: 10px;
+          cursor: pointer;
+          box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+          transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+        }
+        .SizeBuddy-CategoryCard:hover {
+          transform: translateY(-2px);
+          border-color: #008060;
+          box-shadow: 0 14px 28px rgba(0, 128, 96, 0.12);
+        }
+        .SizeBuddy-CategoryCard:focus-visible {
+          outline: 3px solid rgba(0, 128, 96, 0.22);
+          outline-offset: 2px;
+          border-color: #008060;
+        }
+        .SizeBuddy-CategoryCard__Accent {
+          width: 42px;
+          height: 6px;
+          border-radius: 999px;
+          background: linear-gradient(90deg, #008060 0%, #33a07d 100%);
         }
         .Polaris-LegacyStack {
           width: 100%;

@@ -31,6 +31,65 @@ export async function requireActiveSubscription(req, res, next) {
   }
 }
 
+function inferPlanName(name, amount) {
+  const normalizedName = String(name || '').toLowerCase();
+  const numericAmount = Number.parseFloat(amount);
+
+  if (normalizedName.includes('premium')) {
+    return 'Premium';
+  }
+
+  if (normalizedName.includes('pro')) {
+    return 'Pro';
+  }
+
+  if (Number.isFinite(numericAmount) && numericAmount >= 20) {
+    return 'Premium';
+  }
+
+  if (Number.isFinite(numericAmount) && numericAmount >= 10) {
+    return 'Pro';
+  }
+
+  return 'Free';
+}
+
+function getManagedSubscriptionAmount(lineItems = []) {
+  for (const lineItem of lineItems) {
+    const pricingDetails = lineItem?.plan?.pricingDetails;
+
+    if (pricingDetails?.__typename === 'AppRecurringPricing') {
+      const amount = Number.parseFloat(pricingDetails?.price?.amount);
+      if (Number.isFinite(amount)) {
+        return amount;
+      }
+    }
+
+    if (pricingDetails?.__typename === 'AppUsagePricing') {
+      const amount = Number.parseFloat(pricingDetails?.cappedAmount?.amount);
+      if (Number.isFinite(amount)) {
+        return amount;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function upsertSubscriptionPlan(shop, planName, subscriptionId = null) {
+  const db = await getDb();
+  await db.run(
+    `INSERT INTO subscriptions (shop, plan, status, subscription_id, updated_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(shop) DO UPDATE SET
+       plan = EXCLUDED.plan,
+       status = EXCLUDED.status,
+       subscription_id = EXCLUDED.subscription_id,
+       updated_at = CURRENT_TIMESTAMP`,
+    [shop, planName, 'active', subscriptionId]
+  );
+}
+
 // Sync current plan from Shopify Billing API and update database
 async function syncPlanFromShopify(shop, session) {
   try {
@@ -38,62 +97,89 @@ async function syncPlanFromShopify(shop, session) {
       console.log('syncPlanFromShopify: no session or token for', shop);
       return null;
     }
-    
-    // Use REST API to get recurring application charges (more reliable for managed pricing)
+
+    try {
+      const gqlClient = new shopify.api.clients.Graphql({ session });
+      const managedPricingResponse = await withShopifyRateLimit(() =>
+        gqlClient.request(`#graphql
+          query CurrentManagedSubscription {
+            currentAppInstallation {
+              activeSubscriptions {
+                id
+                name
+                status
+                lineItems {
+                  plan {
+                    pricingDetails {
+                      __typename
+                      ... on AppRecurringPricing {
+                        interval
+                        price {
+                          amount
+                          currencyCode
+                        }
+                      }
+                      ... on AppUsagePricing {
+                        terms
+                        cappedAmount {
+                          amount
+                          currencyCode
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `)
+      );
+
+      const managedSubscriptions = managedPricingResponse?.data?.currentAppInstallation?.activeSubscriptions || [];
+
+      if (managedSubscriptions.length > 0) {
+        const currentSubscription = managedSubscriptions[0];
+        const amount = getManagedSubscriptionAmount(currentSubscription.lineItems);
+        const planName = inferPlanName(currentSubscription.name, amount);
+
+        await upsertSubscriptionPlan(shop, planName, currentSubscription.id || null);
+        console.log(
+          'Synced plan from Shopify managed pricing:',
+          planName,
+          'for shop:',
+          shop,
+          '(subscription:',
+          currentSubscription.name || currentSubscription.id,
+          ')'
+        );
+        return planName;
+      }
+    } catch (managedPricingError) {
+      console.error('Managed pricing sync error:', managedPricingError.message || managedPricingError);
+    }
+
     const restClient = new shopify.api.clients.Rest({ session });
-    const charges = await withShopifyRateLimit(() => 
+    const charges = await withShopifyRateLimit(() =>
       restClient.get({ path: 'recurring_application_charges' })
     );
-    
+
     const activeCharges = (charges.body?.recurring_application_charges || [])
-      .filter(c => c.status === 'active');
-    
-    if (activeCharges.length === 0) {
-      console.log('No active charges found for', shop, '— assuming Free plan');
-      // Update DB to Free if not set
-      const db = await getDb();
-      await db.run(
-        `INSERT INTO subscriptions (shop, plan, status, updated_at)
-         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(shop) DO UPDATE SET
-           plan = COALESCE(EXCLUDED.plan, subscriptions.plan, 'Free'),
-           updated_at = CURRENT_TIMESTAMP`,
-        [shop, 'Free', 'active']
-      );
-      return 'Free';
+      .filter((charge) => charge.status === 'active');
+
+    if (activeCharges.length > 0) {
+      const latestCharge = activeCharges.sort((a, b) =>
+        new Date(b.created_at) - new Date(a.created_at)
+      )[0];
+      const planName = inferPlanName(latestCharge.name, latestCharge.price);
+
+      await upsertSubscriptionPlan(shop, planName, String(latestCharge.id));
+      console.log('Synced plan from Shopify REST API:', planName, 'for shop:', shop, '(charge:', latestCharge.name, ')');
+      return planName;
     }
-    
-    // Get the most recent active charge
-    const latestCharge = activeCharges.sort((a, b) => 
-      new Date(b.created_at) - new Date(a.created_at)
-    )[0];
-    
-    // Infer plan from charge name or price
-    let planName = 'Free';
-    if (latestCharge.name && latestCharge.name.toLowerCase().includes('premium')) {
-      planName = 'Premium';
-    } else if (latestCharge.name && latestCharge.name.toLowerCase().includes('pro')) {
-      planName = 'Pro';
-    } else if (latestCharge.price && parseFloat(latestCharge.price) >= 20) {
-      planName = 'Premium';
-    } else if (latestCharge.price && parseFloat(latestCharge.price) >= 10) {
-      planName = 'Pro';
-    }
-    
-    console.log('Synced plan from Shopify REST API:', planName, 'for shop:', shop, '(charge:', latestCharge.name, ')');
-    
-    const db = await getDb();
-    await db.run(
-      `INSERT INTO subscriptions (shop, plan, status, subscription_id, updated_at)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(shop) DO UPDATE SET
-         plan = EXCLUDED.plan,
-         status = EXCLUDED.status,
-         subscription_id = EXCLUDED.subscription_id,
-         updated_at = CURRENT_TIMESTAMP`,
-      [shop, planName, 'active', String(latestCharge.id)]
-    );
-    return planName;
+
+    console.log('No active managed subscriptions or recurring charges found for', shop, '— assuming Free plan');
+    await upsertSubscriptionPlan(shop, 'Free', null);
+    return 'Free';
   } catch (e) {
     console.error('syncPlanFromShopify error:', e.message || e);
     return null;
@@ -105,15 +191,8 @@ router.get('/api/billing/status', validateAuthenticatedSession, async (req, res)
   try {
     const session = res.locals.shopify.session;
     const db = await getDb();
-    let sub = await db.get('SELECT plan, status, subscription_id FROM subscriptions WHERE shop = ?', [session.shop]);
-    
-    // If no subscription or stale, sync from Shopify API
-    if (!sub || !sub.plan) {
-      const syncedPlan = await syncPlanFromShopify(session.shop, session);
-      if (syncedPlan) {
-        sub = await db.get('SELECT plan, status, subscription_id FROM subscriptions WHERE shop = ?', [session.shop]);
-      }
-    }
+    await syncPlanFromShopify(session.shop, session);
+    const sub = await db.get('SELECT plan, status, subscription_id FROM subscriptions WHERE shop = ?', [session.shop]);
     
     const countRow = await db.get('SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ?', [session.shop]);
     const cnt = countRow?.cnt || 0;

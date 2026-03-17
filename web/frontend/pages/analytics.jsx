@@ -10,30 +10,20 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { SizeRecommendation } from "../components/SizeRecommendation";
+import { useLocation } from "react-router-dom";
+import { Analytics } from "../components/Analytics";
 
-export default function HomePage() {
+export default function AnalyticsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [shop, setShop] = useState(null);
   const [host, setHost] = useState(null);
   const location = useLocation();
-  const navigate = useNavigate();
 
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const shopFromUrl = urlParams.get('shop');
     const hostFromUrl = urlParams.get('host');
-    const tabParam = urlParams.get('tab');
-
-    if (tabParam === '1' || tabParam === '2') {
-      const redirectPath = tabParam === '1' ? '/analytics' : '/plans';
-      urlParams.delete('tab');
-      const nextSearch = urlParams.toString();
-      navigate(`${redirectPath}${nextSearch ? `?${nextSearch}` : ''}`, { replace: true });
-      return;
-    }
 
     if (!shopFromUrl || !hostFromUrl) {
       console.error('Missing required parameters:', { shop: shopFromUrl, host: hostFromUrl });
@@ -46,7 +36,7 @@ export default function HomePage() {
     setShop(shopFromUrl);
     setHost(hostFromUrl);
     setIsLoading(false);
-  }, [location.search, navigate]);
+  }, [location.search]);
 
   if (isLoading) {
     return (
@@ -96,7 +86,7 @@ export default function HomePage() {
         <TitleBar title="Size Buddy" />
         <Layout>
           <Layout.Section>
-            <SizeRecommendation shop={shop} host={host} />
+            <Analytics shop={shop} host={host} />
           </Layout.Section>
         </Layout>
       </Page>

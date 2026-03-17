@@ -817,11 +817,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files from frontend/public directory
-app.use('/images', express.static(join(process.cwd(), 'frontend/dist/images')));
-
-// Serve static files from the frontend/dist directory
-app.use(express.static(join(process.cwd(), 'frontend/dist')));
+// Serve frontend assets
+if (process.env.NODE_ENV === 'development') {
+  app.use('/images', express.static(join(process.cwd(), 'frontend/public/images')));
+} else {
+  app.use('/images', express.static(join(process.cwd(), 'frontend/dist/images')));
+  app.use(express.static(join(process.cwd(), 'frontend/dist')));
+}
 
 // Set up Shopify authentication and webhook handling
 app.get("/api/auth", shopify.auth.begin());
@@ -852,18 +854,28 @@ if (process.env.NODE_ENV === 'development') {
 // Development mode: proxy requests to Vite dev server
 if (process.env.NODE_ENV === "development") {
   console.log('Running in development mode - proxying frontend requests to Vite server');
+  const viteDevServerUrl = `http://localhost:${FRONTEND_PORT}`;
+  const viteProxy = createProxyMiddleware({
+    target: viteDevServerUrl,
+    changeOrigin: true,
+    ws: true,
+    xfwd: true,
+  });
   
   const skipAuthPaths = [
     '/@vite',
     '/@react-refresh',
     '/@fs',
     '/node_modules',
+    '/src',
+    '/assets',
+    '/vite.svg',
+    '/__vite',
     '.js',
     '.css',
     '.jsx',
     '.mjs',
-    '.html',
-    '/assets'
+    '.html'
   ];
 
   // API routes require authentication EXCEPT size-recommendations
@@ -891,21 +903,21 @@ if (process.env.NODE_ENV === "development") {
       return next();
     }
 
-    // Skip auth for Vite dev assets
+    // Proxy Vite dev assets directly
     if (skipAuthPaths.some(path => req.path.includes(path))) {
-      console.log('Skipping auth for dev asset:', req.path);
-      return next();
+      console.log('Proxying dev asset to Vite:', req.path);
+      return viteProxy(req, res, next);
     }
     
-    // For embedded app requests, serve the index.html from the frontend
+    // Embedded app requests should load through Vite in dev
     if (req.query.embedded === '1') {
-      console.log('Embedded app request, serving frontend index.html');
-      return res.sendFile(join(process.cwd(), 'frontend', 'index.html'));
+      console.log('Proxying embedded app request to Vite:', req.path);
+      return viteProxy(req, res, next);
     }
     
-    // For all other paths, ensure shop is installed
+    // For all other frontend routes, ensure shop is installed first, then proxy to Vite
     console.log('Checking shop installation for path:', req.path);
-    shopify.ensureInstalledOnShop()(req, res, next);
+    return shopify.ensureInstalledOnShop()(req, res, () => viteProxy(req, res, next));
   });
 } else {
   // Production mode: serve static files
