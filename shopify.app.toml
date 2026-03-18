@@ -1,10 +1,10 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "022970402fe6201f671a1fffed454974"
-application_url = "https://31f74bcd7f90.ngrok.app"
+client_id = "2f04ec2176fa381f9554da22c41aebb0"
+application_url = "https://sizebuddy.onrender.com"
 embedded = true
-name = "size-buddy-dev"
-handle = "size-buddy-dev"
+name = "size-buddy"
+handle = "size-buddy-v6-testing"
 
 [build]
 automatically_update_urls_on_dev = true
@@ -14,11 +14,11 @@ api_version = "2025-01"
 
 [[webhooks.subscriptions]]
 compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
-uri = "https://31f74bcd7f90.ngrok.app/api/webhooks"
+uri = "https://sizebuddy.onrender.com/api/webhooks"
 
 [[webhooks.subscriptions]]
 topics = ["orders/create"]
-uri = "https://31f74bcd7f90.ngrok.app/api/webhooks"
+uri = "https://sizebuddy.onrender.com/api/webhooks"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -26,14 +26,14 @@ scopes = "write_products read_products write_customers read_customers read_theme
 
 [auth]
 redirect_urls = [
-      "https://31f74bcd7f90.ngrok.app/api/auth/callback",
-      "https://31f74bcd7f90.ngrok.app/api/auth/exit-iframe"
+      "https://sizebuddy.onrender.com/api/auth/callback",
+      "https://sizebuddy.onrender.com/api/auth/exit-iframe"
 ]
 
 [pos]
 embedded = false
 
 [app_proxy]
-  url = "/app-proxy"
+  url = "https://sizebuddy.onrender.com"
 prefix = "apps"
 subpath = "size-buddy"
