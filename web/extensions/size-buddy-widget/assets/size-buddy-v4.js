@@ -948,9 +948,9 @@
     // Function to fetch size data and render form
     async function fetchSizeData(productId, shopDomain, contentDiv) {
       try {
-        // Resolve backend base URL: block setting (data-backend-url) for local testing, else window.SIZE_BUDDY_HOST, else production
+        // Resolve backend base URL from the optional global override, else production.
         const widgetEl = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
-        const backendBase = (widgetEl && widgetEl.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
+        const backendBase = window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
         const backendBaseClean = (backendBase || '').replace(/\/$/, '');
 
         // Modal/slider colors from block settings (same button colors used for modal button)
@@ -973,7 +973,7 @@
           _: String(timestamp)
         });
         const proxyUrl = '/apps/size-buddy/size-charts?' + proxyParams.toString();
-        // Fallback (public, read-only): backend public endpoint – uses local ngrok when Backend URL is set for testing
+        // Fallback (public, read-only): direct backend endpoint for production or local override testing
         const directUrl = backendBaseClean + '/public/size-charts?product_id=' + productId + '&shop=' + encodeURIComponent(resolvedShopDomain) + '&_=' + timestamp;
         
         await ensureProductVariantsLoaded();
@@ -2488,8 +2488,7 @@
   async function logSizeRecommendation(chartId, recommendedSize, measurements, shopDomain, productId) {
     try {
       console.log('logSizeRecommendation called with:', { chartId, recommendedSize, measurements, shopDomain, productId });
-      const w = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
-      const backendBase = (w && w.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
+      const backendBase = window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
       const backendUrl = (backendBase || '').replace(/\/$/, '');
       const backendUrls = [backendUrl];
       let logSuccess = false;
