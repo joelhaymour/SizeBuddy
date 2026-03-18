@@ -4,7 +4,7 @@ import { Redirect } from '@shopify/app-bridge/actions';
 
 export default function Plans() {
   const app = useAppBridge();
-  const APP_HANDLE = 'size-buddy-v6-testing';
+  const APP_HANDLE = 'size-buddy-dev';
   return (
     <Page title="Plans">
       <Layout>

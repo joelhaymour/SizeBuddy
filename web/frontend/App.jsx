@@ -62,15 +62,15 @@ export default function App() {
               navigationLinks={[
                 {
                   label: "Size Recommendations",
-                  destination: `/?shop=${shop}&host=${host}&tab=0`,
+                  destination: `/?shop=${shop}&host=${host}`,
                 },
                 {
                   label: "Analytics",
-                  destination: `/?shop=${shop}&host=${host}&tab=1`,
+                  destination: `/analytics?shop=${shop}&host=${host}`,
                 },
                 {
                   label: "Plans",
-                  destination: `/?shop=${shop}&host=${host}&tab=2`,
+                  destination: `/plans?shop=${shop}&host=${host}`,
                 },
               ]}
             />

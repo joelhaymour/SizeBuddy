@@ -41,12 +41,25 @@ const STATIC_PATH =
 
 const app = express();
 
+function normalizeAndFilterChartSizes(sizes = []) {
+  if (!Array.isArray(sizes)) return [];
+
+  return sizes
+    .map((size) => ({
+      ...size,
+      name: size.name || size.size,
+      size: size.size || size.name,
+      enabled: size.enabled !== false,
+    }))
+    .filter((size) => size.enabled !== false);
+}
+
 // Parse JSON for all endpoints EXCEPT the Shopify webhook path (raw body required)
 app.use((req, res, next) => {
   if (req.path === (shopify.config?.webhooks?.path || '/api/webhooks')) {
     return next();
   }
-  return express.json()(req, res, next);
+  return express.json({ limit: '10mb' })(req, res, next);
 });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -469,11 +482,12 @@ app.get('/public/size-charts', async (req, res) => {
       });
     }
 
-    chartData.sizes = chartData.sizes.map(s => {
-      const n = { name: s.name || s.size, size: s.size || s.name };
-      Object.keys(s).forEach(k => { if (k !== 'name' && k !== 'size') n[k] = s[k]; });
-      return n;
-    });
+    chartData.sizes = normalizeAndFilterChartSizes(chartData.sizes);
+    if (chartData.sizes.length === 0) {
+      return res.json({ found: false, error: 'No enabled sizes are available for this chart' });
+    }
+
+    const customSizeChartImage = chart.custom_size_chart_image || null;
 
     res.json({
       found: true,
@@ -483,9 +497,13 @@ app.get('/public/size-charts', async (req, res) => {
         category: chart.category,
         subcategory: chart.subcategory,
         fit_type: chart.fit_type,
+        custom_size_chart_image: customSizeChartImage,
         sizes: chartData.sizes,
         measurements: chartData.measurements || [],
-        chart_data: chartData,
+        chart_data: {
+          ...chartData,
+          custom_size_chart_image: customSizeChartImage
+        },
         optional_measurements: chart.optional_measurements ? JSON.parse(chart.optional_measurements) : {}
       }
     });
@@ -497,6 +515,29 @@ app.get('/public/size-charts', async (req, res) => {
 
 // Test endpoint to debug chart lookup (development only)
 if (process.env.NODE_ENV === 'development') {
+// Debug: list where size charts are stored and what's in the DB for a shop
+app.get("/api/debug/size-charts-db", async (req, res) => {
+  const { shop } = req.query;
+  if (!shop) return res.status(400).json({ error: 'Add ?shop=sizemeup111.myshopify.com' });
+  try {
+    const db = req.app.locals.db;
+    const dbPath = join(process.cwd(), 'database.sqlite');
+    const sizeCharts = await db.all(`SELECT id, name, category, shop_domain, created_at FROM size_charts WHERE shop_domain = ?`, [shop]);
+    const productCharts = await db.all(`SELECT * FROM product_charts WHERE shop_domain = ?`, [shop]);
+    return res.json({
+      message: 'Size charts for testing are stored in SQLite (dev) or Postgres (prod).',
+      dbPath,
+      shop,
+      sizeChartsCount: sizeCharts.length,
+      sizeCharts,
+      productChartsCount: productCharts.length,
+      productCharts
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/test-chart-lookup", async (req, res) => {
   const { product_id, shop } = req.query;
   
@@ -788,11 +829,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files from frontend/public directory
-app.use('/images', express.static(join(process.cwd(), 'frontend/dist/images')));
-
-// Serve static files from the frontend/dist directory
-app.use(express.static(join(process.cwd(), 'frontend/dist')));
+// Serve frontend assets
+if (process.env.NODE_ENV === 'development') {
+  app.use('/images', express.static(join(process.cwd(), 'frontend/public/images')));
+} else {
+  app.use('/images', express.static(join(process.cwd(), 'frontend/dist/images')));
+  app.use(express.static(join(process.cwd(), 'frontend/dist')));
+}
 
 // Set up Shopify authentication and webhook handling
 app.get("/api/auth", shopify.auth.begin());
@@ -823,18 +866,28 @@ if (process.env.NODE_ENV === 'development') {
 // Development mode: proxy requests to Vite dev server
 if (process.env.NODE_ENV === "development") {
   console.log('Running in development mode - proxying frontend requests to Vite server');
+  const viteDevServerUrl = `http://localhost:${FRONTEND_PORT}`;
+  const viteProxy = createProxyMiddleware({
+    target: viteDevServerUrl,
+    changeOrigin: true,
+    ws: true,
+    xfwd: true,
+  });
   
   const skipAuthPaths = [
     '/@vite',
     '/@react-refresh',
     '/@fs',
     '/node_modules',
+    '/src',
+    '/assets',
+    '/vite.svg',
+    '/__vite',
     '.js',
     '.css',
     '.jsx',
     '.mjs',
-    '.html',
-    '/assets'
+    '.html'
   ];
 
   // API routes require authentication EXCEPT size-recommendations
@@ -862,21 +915,21 @@ if (process.env.NODE_ENV === "development") {
       return next();
     }
 
-    // Skip auth for Vite dev assets
+    // Proxy Vite dev assets directly
     if (skipAuthPaths.some(path => req.path.includes(path))) {
-      console.log('Skipping auth for dev asset:', req.path);
-      return next();
+      console.log('Proxying dev asset to Vite:', req.path);
+      return viteProxy(req, res, next);
     }
     
-    // For embedded app requests, serve the index.html from the frontend
+    // Embedded app requests should load through Vite in dev
     if (req.query.embedded === '1') {
-      console.log('Embedded app request, serving frontend index.html');
-      return res.sendFile(join(process.cwd(), 'frontend', 'index.html'));
+      console.log('Proxying embedded app request to Vite:', req.path);
+      return viteProxy(req, res, next);
     }
     
-    // For all other paths, ensure shop is installed
+    // For all other frontend routes, ensure shop is installed first, then proxy to Vite
     console.log('Checking shop installation for path:', req.path);
-    shopify.ensureInstalledOnShop()(req, res, next);
+    return shopify.ensureInstalledOnShop()(req, res, () => viteProxy(req, res, next));
   });
 } else {
   // Production mode: serve static files
@@ -952,11 +1005,12 @@ async function initializeDatabase() {
         id SERIAL PRIMARY KEY,
         shop_domain TEXT NOT NULL,
         name TEXT NOT NULL,
-        category TEXT CHECK (category IN ('tops','bottoms','bikinis','dresses')) NOT NULL,
+        category TEXT CHECK (category IN ('tops','bottoms','bikinis','dresses','onepieces')) NOT NULL,
         subcategory TEXT,
         fit_type TEXT NOT NULL,
         chart_data TEXT NOT NULL,
         optional_measurements TEXT,
+        custom_size_chart_image TEXT,
         locked BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -1019,12 +1073,18 @@ async function initializeDatabase() {
       await db.run(`CREATE INDEX IF NOT EXISTS idx_product_charts_shop ON product_charts(shop_domain)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_reco_shop ON size_recommendation_analytics(shop)`);
 
-      // Ensure category check constraint includes 'bikinis' on existing databases
+      // Ensure category check constraint includes all supported chart categories
       try {
         await db.run(`ALTER TABLE size_charts DROP CONSTRAINT IF EXISTS size_charts_category_check`);
-        await db.run(`ALTER TABLE size_charts ADD CONSTRAINT size_charts_category_check CHECK (category IN ('tops','bottoms','bikinis','dresses'))`);
+        await db.run(`ALTER TABLE size_charts ADD CONSTRAINT size_charts_category_check CHECK (category IN ('tops','bottoms','bikinis','dresses','onepieces'))`);
       } catch (e) {
         console.warn('Skipping category check constraint update:', e.message || e);
+      }
+
+      try {
+        await db.run(`ALTER TABLE size_charts ADD COLUMN IF NOT EXISTS custom_size_chart_image TEXT`);
+      } catch (e) {
+        console.warn('Skipping custom_size_chart_image column update:', e.message || e);
       }
     } catch (e) {
       console.error('Postgres schema init error:', e);
@@ -1042,11 +1102,12 @@ async function initializeDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       shop_domain TEXT NOT NULL,
       name TEXT NOT NULL,
-      category TEXT CHECK(category IN ('tops', 'bottoms', 'bikinis', 'dresses')) NOT NULL,
+      category TEXT CHECK(category IN ('tops', 'bottoms', 'bikinis', 'dresses', 'onepieces')) NOT NULL,
       subcategory TEXT,
       fit_type TEXT NOT NULL,
       chart_data TEXT NOT NULL,
       optional_measurements TEXT,
+      custom_size_chart_image TEXT,
       locked INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

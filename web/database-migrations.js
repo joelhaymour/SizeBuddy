@@ -104,6 +104,72 @@ async function runMigrations() {
       console.log('Locked column already exists in size_charts table.');
     }
 
+    const customSizeChartImageExists = sizeChartsInfo.some(column => column.name === 'custom_size_chart_image');
+    if (!customSizeChartImageExists) {
+      console.log('Adding custom_size_chart_image column to size_charts table...');
+      await db.run(`ALTER TABLE size_charts ADD COLUMN custom_size_chart_image TEXT;`);
+      console.log('custom_size_chart_image column added successfully.');
+    } else {
+      console.log('custom_size_chart_image column already exists in size_charts table.');
+    }
+
+    const sizeChartsSchema = await db.get(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'size_charts'`);
+    const supportsOnePiecesCategory = typeof sizeChartsSchema?.sql === 'string' && sizeChartsSchema.sql.includes("'onepieces'");
+    if (!supportsOnePiecesCategory) {
+      console.log('Refreshing size_charts table to support onepieces category...');
+      await db.exec(`
+        PRAGMA foreign_keys = OFF;
+        BEGIN TRANSACTION;
+        CREATE TABLE size_charts_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          shop_domain TEXT NOT NULL,
+          name TEXT NOT NULL,
+          category TEXT CHECK(category IN ('tops', 'bottoms', 'bikinis', 'dresses', 'onepieces')) NOT NULL,
+          subcategory TEXT,
+          fit_type TEXT NOT NULL,
+          chart_data TEXT NOT NULL,
+          optional_measurements TEXT,
+          custom_size_chart_image TEXT,
+          locked INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO size_charts_new (
+          id,
+          shop_domain,
+          name,
+          category,
+          subcategory,
+          fit_type,
+          chart_data,
+          optional_measurements,
+          custom_size_chart_image,
+          locked,
+          created_at,
+          updated_at
+        )
+        SELECT
+          id,
+          shop_domain,
+          name,
+          category,
+          subcategory,
+          fit_type,
+          chart_data,
+          optional_measurements,
+          custom_size_chart_image,
+          locked,
+          created_at,
+          updated_at
+        FROM size_charts;
+        DROP TABLE size_charts;
+        ALTER TABLE size_charts_new RENAME TO size_charts;
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+      `);
+      console.log('size_charts category constraint updated successfully.');
+    }
+
     console.log('Migrations completed successfully.');
   } catch (error) {
     console.error('Error running migrations:', error);

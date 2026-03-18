@@ -2,7 +2,25 @@ import { DeliveryMethod } from "@shopify/shopify-api";
 import PrivacyWebhookHandlers from "./privacy.js";
 import { getDb } from './db.js';
 
-// DB provided by adapter
+function getLineItemProperty(lineItem, key) {
+  const props = lineItem?.properties;
+  if (Array.isArray(props)) {
+    const match = props.find((item) => item && item.name === key);
+    return match ? match.value : null;
+  }
+  if (props && typeof props === 'object') {
+    return props[key] || null;
+  }
+  return null;
+}
+
+function getLineItemRevenue(lineItem) {
+  const quantity = Number(lineItem?.quantity || 1);
+  const price = Number(lineItem?.price || 0);
+  const totalDiscount = Number(lineItem?.total_discount || 0);
+  const raw = (price * quantity) - totalDiscount;
+  return Number.isFinite(raw) ? Math.max(0, Number(raw.toFixed(2))) : 0;
+}
 
 const CustomWebhookHandlers = {
   ...PrivacyWebhookHandlers,
@@ -28,11 +46,9 @@ const CustomWebhookHandlers = {
         if (!sub) return;
         const status = (sub.status || 'active').toLowerCase();
         const id = sub.id || null;
-        // Try to infer plan name from line items or name if present
         const inferredPlan = sub?.name || sub?.line_items?.[0]?.plan?.name || null;
         const db = await getDb();
-        
-        // Upsert subscription (Postgres-compatible)
+
         await db.run(
           `INSERT INTO subscriptions (shop, plan, status, subscription_id, updated_at)
            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -44,43 +60,37 @@ const CustomWebhookHandlers = {
           [shop, inferredPlan, status, id]
         );
 
-        // Immediately lock excess charts on downgrade
         const planRow = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]);
         const newPlan = planRow?.plan || 'Free';
         const limit = newPlan === 'Premium' ? Infinity : (newPlan === 'Pro' ? 5 : 2);
-        
+
         if (limit !== Infinity) {
-          // Count current unlocked charts (use FALSE for Postgres, 0 for SQLite)
           const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
           const countRow = await db.get(`SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`, [shop]);
           const unlocked = countRow?.cnt || 0;
-          
+
           if (unlocked > limit) {
             console.log(`Downgrade detected for ${shop}: ${newPlan} allows ${limit}, currently ${unlocked} unlocked. Locking excess.`);
-            // Reset all to unlocked first, then lock oldest to enforce limit
             const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
             await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
-            // Lock all except the N most recent (keep newest unlocked)
             if (process.env.DATABASE_URL) {
-              // Postgres
               await db.run(
-                `UPDATE size_charts SET locked = TRUE 
+                `UPDATE size_charts SET locked = TRUE
                  WHERE shop_domain = ? AND id NOT IN (
-                   SELECT id FROM size_charts 
-                   WHERE shop_domain = ? 
-                   ORDER BY created_at DESC, id DESC 
+                   SELECT id FROM size_charts
+                   WHERE shop_domain = ?
+                   ORDER BY created_at DESC, id DESC
                    LIMIT ?
                  )`,
                 [shop, shop, limit]
               );
             } else {
-              // SQLite
               await db.run(
-                `UPDATE size_charts SET locked = 1 
+                `UPDATE size_charts SET locked = 1
                  WHERE shop_domain = ? AND id NOT IN (
-                   SELECT id FROM size_charts 
-                   WHERE shop_domain = ? 
-                   ORDER BY created_at DESC, id DESC 
+                   SELECT id FROM size_charts
+                   WHERE shop_domain = ?
+                   ORDER BY created_at DESC, id DESC
                    LIMIT ?
                  )`,
                 [shop, shop, limit]
@@ -89,7 +99,6 @@ const CustomWebhookHandlers = {
             console.log(`Locked excess charts for ${shop}.`);
           }
         } else {
-          // Premium: unlock all
           console.log(`Upgrade to Premium for ${shop}: unlocking all charts.`);
           const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
           await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
@@ -99,8 +108,63 @@ const CustomWebhookHandlers = {
       }
     },
   },
+  ORDERS_CREATE: {
+    deliveryMethod: DeliveryMethod.Http,
+    callbackUrl: "/api/webhooks",
+    callback: async (_topic, shop, body) => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const lineItems = Array.isArray(payload?.line_items) ? payload.line_items : [];
+        if (!lineItems.length) return;
+
+        const attributedItems = lineItems
+          .map((lineItem) => {
+            const recommendationToken = getLineItemProperty(lineItem, '_size_buddy_recommendation_token');
+            if (!recommendationToken) return null;
+            return {
+              orderId: String(payload?.id || ''),
+              orderName: payload?.name || payload?.order_number || null,
+              lineItemId: String(lineItem?.id || `${payload?.id || 'order'}-${lineItem?.variant_id || lineItem?.product_id || Math.random()}`),
+              recommendationToken,
+              productId: lineItem?.product_id ? String(lineItem.product_id) : null,
+              variantId: lineItem?.variant_id ? String(lineItem.variant_id) : null,
+              recommendedSize: getLineItemProperty(lineItem, '_size_buddy_recommended_size') || null,
+              quantity: Number(lineItem?.quantity || 1),
+              revenueAmount: getLineItemRevenue(lineItem),
+              currency: payload?.currency || null,
+            };
+          })
+          .filter(Boolean);
+
+        if (!attributedItems.length) return;
+
+        const db = await getDb();
+        for (const item of attributedItems) {
+          await db.run(
+            `INSERT INTO size_buddy_purchase_analytics
+             (shop, order_id, order_name, line_item_id, recommendation_token, product_id, variant_id, recommended_size, quantity, revenue_amount, currency, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+             ON CONFLICT(order_id, line_item_id) DO NOTHING`,
+            [
+              shop,
+              item.orderId,
+              item.orderName,
+              item.lineItemId,
+              item.recommendationToken,
+              item.productId,
+              item.variantId,
+              item.recommendedSize,
+              item.quantity,
+              item.revenueAmount,
+              item.currency,
+            ]
+          );
+        }
+      } catch (e) {
+        console.error('ORDERS_CREATE handler error:', e);
+      }
+    },
+  },
 };
 
 export default CustomWebhookHandlers;
-
-

@@ -2,7 +2,7 @@
   margin: 20px 0;
   padding: 15px;
   border: 1px solid #e8e8e8;
-  border-radius: 8px;
+  border-radius: 20px;
   background-color: #f9f9f9;
 }
 
@@ -43,22 +43,23 @@
 
 .size-buddy-form input {
   width: 100%;
-  padding: 8px;
+  padding: 10px 14px;
   border: 1px solid #ddd;
-  border-radius: 4px;
+  border-radius: 16px;
 }
 
 .size-buddy-button {
   display: inline-block;
   margin-top: 10px;
-  padding: 8px 16px;
+  padding: 12px 24px;
   background-color: var(--sb-primary, #4a90e2);
   color: var(--sb-text, #ffffff);
   border: none;
-  border-radius: 4px;
+  border-radius: 16px;
   cursor: pointer;
   font-weight: 500;
   text-align: center;
+  transition: all 0.2s ease;
 }
 
 .size-buddy-button:hover {
@@ -67,9 +68,9 @@
 
 .size-buddy-result {
   margin-top: 15px;
-  padding: 10px;
+  padding: 12px;
   background-color: #e8f4fd;
-  border-radius: 4px;
+  border-radius: 16px;
   text-align: center;
 }
 
@@ -84,13 +85,22 @@
 
 .size-buddy-size-chart th,
 .size-buddy-size-chart td {
-  padding: 8px;
+  padding: 10px;
   border: 1px solid #ddd;
   text-align: center;
 }
 
 .size-buddy-size-chart th {
   background-color: #f2f2f2;
+  border-radius: 12px 12px 0 0;
+}
+
+.size-buddy-size-chart tr:last-child td:first-child {
+  border-radius: 0 0 0 12px;
+}
+
+.size-buddy-size-chart tr:last-child td:last-child {
+  border-radius: 0 0 12px 0;
 }
 
 /* Modal styles */
@@ -117,9 +127,9 @@
   width: 90%;
   max-width: 700px;
   max-height: 90vh;
-  border-radius: 10px;
+  border-radius: 24px;
   position: relative;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
   overflow-y: auto;
   box-sizing: border-box;
 }
@@ -135,11 +145,19 @@
   cursor: pointer;
   z-index: 1;
   line-height: 1;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .size-buddy-close:hover,
 .size-buddy-close:focus {
   color: #000;
+  background-color: rgba(0, 0, 0, 0.06);
   text-decoration: none;
 }
 
@@ -147,12 +165,12 @@
   background-color: var(--sb-primary, #4a90e2);
   color: var(--sb-text, #ffffff);
   border: none;
-  padding: 10px 20px;
-  border-radius: 5px;
+  padding: 14px 28px;
+  border-radius: 16px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .size-buddy-toggle-btn:hover {
@@ -188,4 +206,36 @@
     right: 10px;
     font-size: 24px;
   }
-} 
+}
+
+/* ========== Product page: modern rounded buttons and blocks (when Size Buddy block is present) ========== */
+.product-form__submit,
+button[name="add"],
+.quantity__button,
+.shopify-payment-button__button,
+.product-form .shopify-payment-button__button--unbranded,
+[type="submit"].button,
+.button--full-width,
+button.button {
+  border-radius: 16px !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.product-form__input input:checked + label,
+.field__input--select,
+.product-form__input .disclosure__list-wrapper,
+.variant-input label,
+.quantity__input {
+  border-radius: 16px !important;
+}
+
+.quantity {
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+
+.product__info-container,
+.product__media-wrapper,
+.card__content {
+  border-radius: 20px !important;
+}

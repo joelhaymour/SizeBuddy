@@ -1,0 +1,52 @@
+/* Global overrides: modern rounded buttons and surfaces (admin) */
+
+/* All Polaris buttons – modern rounded */
+.Polaris-Button,
+button.Polaris-Button,
+[class*="Polaris-Button"] {
+  border-radius: 16px !important;
+}
+
+/* Polaris LegacyCard and Card */
+.Polaris-LegacyCard,
+.Polaris-Card {
+  border-radius: 20px !important;
+}
+
+/* Modals */
+.Polaris-Modal-Dialog__Modal,
+.Polaris-Modal__Container,
+.Polaris-Modal-Dialog__Container {
+  border-radius: 20px !important;
+}
+
+.Polaris-Modal-CloseButton {
+  border-radius: 50% !important;
+  width: 36px !important;
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Text fields and inputs */
+.Polaris-TextField__Input,
+.Polaris-Select__Input {
+  border-radius: 16px !important;
+}
+
+/* Tabs */
+.Polaris-Tabs__Tab {
+  border-radius: 16px 16px 0 0 !important;
+}
+
+/* Navigation */
+.Polaris-Navigation__Item {
+  border-radius: 16px !important;
+}
+
+/* Resource picker / popovers */
+.Polaris-Popover,
+.Polaris-Modal-Dialog {
+  border-radius: 20px !important;
+}
