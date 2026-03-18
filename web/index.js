@@ -892,9 +892,8 @@ if (process.env.NODE_ENV === "development") {
 
   // API routes require authentication EXCEPT size-recommendations
   app.use("/api/*", (req, res, next) => {
-    // Skip validation for size-recommendations endpoints
-    if (req.path.startsWith('/api/size-recommendations')) {
-      // Ensure shop parameter is present
+    // req.path is relative to the /api mount, so use originalUrl for the full request path.
+    if (req.originalUrl.startsWith('/api/size-recommendations')) {
       if (!req.query.shop) {
         return res.status(400).json({ error: "Missing shop parameter" });
       }
@@ -938,9 +937,8 @@ if (process.env.NODE_ENV === "development") {
   
   // API routes require authentication EXCEPT size-recommendations
   app.use("/api/*", (req, res, next) => {
-    // Skip validation for size-recommendations endpoints
-    if (req.path.startsWith('/api/size-recommendations')) {
-      // Ensure shop parameter is present
+    // req.path is relative to the /api mount, so use originalUrl for the full request path.
+    if (req.originalUrl.startsWith('/api/size-recommendations')) {
       if (!req.query.shop) {
         return res.status(400).json({ error: "Missing shop parameter" });
       }

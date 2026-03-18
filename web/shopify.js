@@ -23,8 +23,7 @@ const SCOPES = [
   'write_customers',
   'read_customers',
   'read_themes',
-  'write_themes',
-  'read_orders'
+  'write_themes'
 ];
 
 console.log('Using scopes:', SCOPES);
