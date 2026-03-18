@@ -77,38 +77,40 @@
     modal.style.top = '0';
     modal.style.width = '100%';
     modal.style.height = '100%';
-    modal.style.overflow = 'auto';
+    modal.style.overflowY = 'auto';
     modal.style.backgroundColor = 'rgba(0,0,0,0.6)';
     modal.style.backdropFilter = 'blur(3px)';
-    modal.style.transition = 'opacity 0.3s ease';
-    modal.style.padding = '20px';
+    modal.style.transition = 'opacity 0.25s ease';
+    modal.style.padding = '24px 16px';
     modal.style.boxSizing = 'border-box';
+    modal.style.alignItems = 'flex-start';
+    modal.style.justifyContent = 'center';
+    modal.style.opacity = '0';
     
     const modalContent = document.createElement('div');
     modalContent.style.backgroundColor = 'white';
-    modalContent.style.margin = '2% auto';
+    modalContent.style.margin = '0 auto';
     modalContent.style.padding = '25px';
     modalContent.style.border = 'none';
-    modalContent.style.width = '90%';
-    modalContent.style.maxWidth = '700px';
-    modalContent.style.maxHeight = '90vh';
+    modalContent.style.width = '100%';
+    modalContent.style.maxWidth = '560px';
+    modalContent.style.maxHeight = 'calc(100vh - 48px)';
     modalContent.style.borderRadius = '24px';
     modalContent.style.position = 'relative';
     modalContent.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)';
-    modalContent.style.transition = 'transform 0.3s ease';
-    modalContent.style.transform = 'translateY(20px)';
+    modalContent.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
+    modalContent.style.transform = 'translateY(16px) scale(0.985)';
     modalContent.style.opacity = '0';
     modalContent.style.overflowY = 'auto';
     modalContent.style.boxSizing = 'border-box';
     
     // Responsive styles for mobile
     if (window.innerWidth <= 600) {
-      modal.style.padding = '10px';
-      modalContent.style.width = '95%';
-      modalContent.style.maxWidth = '95%';
-      modalContent.style.margin = '5% auto';
-      modalContent.style.padding = '20px';
-      modalContent.style.maxHeight = '85vh';
+      modal.style.padding = '16px 12px';
+      modalContent.style.maxWidth = '420px';
+      modalContent.style.padding = '18px 16px 20px';
+      modalContent.style.maxHeight = 'calc(100vh - 32px)';
+      modalContent.style.borderRadius = '20px';
     }
     
     // Add animation when modal opens
@@ -118,19 +120,26 @@
       }
     });
 
+    let previousBodyOverflow = '';
+
     function showModal() {
-      modal.style.display = 'block';
-      setTimeout(() => {
-        modalContent.style.transform = 'translateY(0)';
+      modal.style.display = 'flex';
+      previousBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      requestAnimationFrame(() => {
+        modal.style.opacity = '1';
+        modalContent.style.transform = 'translateY(0) scale(1)';
         modalContent.style.opacity = '1';
-      }, 10);
+      });
     }
     
     function closeModal() {
-      modalContent.style.transform = 'translateY(20px)';
+      modal.style.opacity = '0';
+      modalContent.style.transform = 'translateY(16px) scale(0.985)';
       modalContent.style.opacity = '0';
       setTimeout(() => {
         modal.style.display = 'none';
+        document.body.style.overflow = previousBodyOverflow;
       }, 300);
     }
     
