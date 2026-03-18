@@ -16,6 +16,9 @@
     const shopDomain = widget.getAttribute('data-shop-domain');
     const buttonColor = widget.getAttribute('data-button-color');
     const buttonTextColor = widget.getAttribute('data-button-text-color');
+    const sliderTrackColor = widget.getAttribute('data-slider-track-color') || '#d8d8d8';
+    const sliderFillColor = widget.getAttribute('data-slider-fill-color') || '#4A90E2';
+    const atcButtonColor = widget.getAttribute('data-atc-button-color') || buttonColor || sliderFillColor || '#4A90E2';
     
     console.log('Size Buddy: Widget attributes found:', { 
       productId, 
@@ -42,7 +45,7 @@
     button.style.color = buttonTextColor || autoText;
     button.style.padding = '12px 20px';
     button.style.border = 'none';
-    button.style.borderRadius = '6px';
+    button.style.borderRadius = '16px';
     button.style.cursor = 'pointer';
     button.style.margin = '15px 0';
     button.style.fontWeight = '600';
@@ -89,7 +92,7 @@
     modalContent.style.width = '90%';
     modalContent.style.maxWidth = '700px';
     modalContent.style.maxHeight = '90vh';
-    modalContent.style.borderRadius = '10px';
+    modalContent.style.borderRadius = '24px';
     modalContent.style.position = 'relative';
     modalContent.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)';
     modalContent.style.transition = 'transform 0.3s ease';
@@ -145,6 +148,12 @@
     closeBtn.style.padding = '0';
     closeBtn.style.lineHeight = '1';
     closeBtn.style.transition = 'color 0.3s ease';
+    closeBtn.style.width = '40px';
+    closeBtn.style.height = '40px';
+    closeBtn.style.display = 'inline-flex';
+    closeBtn.style.alignItems = 'center';
+    closeBtn.style.justifyContent = 'center';
+    closeBtn.style.borderRadius = '50%';
     
     closeBtn.addEventListener('mouseover', function() {
       this.style.color = '#333';
@@ -191,10 +200,585 @@
       return score;
     }
     
-    // Add slider styles
+    function normalizeSizeLabel(value) {
+      const compact = String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^size\s*/,'')
+        .replace(/[\s._-]+/g, '');
+      
+      const aliases = [
+        [/^(xxs|2xs|xxsmall|doubleextrasmall)$/, 'xxs'],
+        [/^(xs|xsmall|extrasmall)$/, 'xs'],
+        [/^(s|sm|small)$/, 's'],
+        [/^(m|md|med|medium)$/, 'm'],
+        [/^(l|lg|large)$/, 'l'],
+        [/^(xl|xlarge|extralarge)$/, 'xl'],
+        [/^(xxl|2xl|2x|xxlarge|doubleextralarge)$/, 'xxl'],
+        [/^(xxxl|3xl|3x|xxxlarge|tripleextralarge)$/, 'xxxl'],
+        [/^(xxxxl|4xl|4x|xxxxlarge|quadextralarge)$/, 'xxxxl'],
+      ];
+      
+      for (const [pattern, replacement] of aliases) {
+        if (pattern.test(compact)) return replacement;
+      }
+      
+      return compact.replace(/[^a-z0-9+]/g, '');
+    }
+    
+    let cachedProductVariants = null;
+    let cachedProductHandle = null;
+    let productVariantsPromise = null;
+    
+    function getCurrentProductHandle() {
+      if (cachedProductHandle) return cachedProductHandle;
+      
+      const handleSources = [
+        window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product && window.ShopifyAnalytics.meta.product.handle,
+        window.meta && window.meta.product && window.meta.product.handle
+      ];
+      
+      for (const source of handleSources) {
+        if (source) {
+          cachedProductHandle = String(source);
+          return cachedProductHandle;
+        }
+      }
+      
+      const canonical = document.querySelector('link[rel="canonical"]');
+      const candidates = [
+        canonical && canonical.href,
+        window.location && window.location.pathname
+      ].filter(Boolean);
+      
+      for (const candidate of candidates) {
+        const match = String(candidate).match(/\/products\/([^\/?#]+)/i);
+        if (match && match[1]) {
+          cachedProductHandle = decodeURIComponent(match[1]);
+          return cachedProductHandle;
+        }
+      }
+      
+      return null;
+    }
+    
+    async function ensureProductVariantsLoaded() {
+      if (Array.isArray(cachedProductVariants) && cachedProductVariants.length) {
+        return cachedProductVariants;
+      }
+      
+      if (productVariantsPromise) {
+        return productVariantsPromise;
+      }
+      
+      const existing = getProductVariants();
+      if (existing.length) {
+        return existing;
+      }
+      
+      const handle = getCurrentProductHandle();
+      if (!handle) {
+        cachedProductVariants = [];
+        return cachedProductVariants;
+      }
+      
+      productVariantsPromise = fetch('/products/' + encodeURIComponent(handle) + '.js?_=' + Date.now(), {
+        credentials: 'same-origin'
+      })
+        .then(async response => {
+          if (!response.ok) {
+            throw new Error('Failed to load product variants: ' + response.status);
+          }
+          return response.json();
+        })
+        .then(product => {
+          cachedProductVariants = Array.isArray(product && product.variants) ? product.variants : [];
+          console.log('Size Buddy: loaded product variants', { count: cachedProductVariants.length, handle });
+          return cachedProductVariants;
+        })
+        .catch(error => {
+          console.warn('Size Buddy: unable to load product variants from product JSON', error);
+          cachedProductVariants = [];
+          return cachedProductVariants;
+        })
+        .finally(() => {
+          productVariantsPromise = null;
+        });
+      
+      return productVariantsPromise;
+    }
+    
+    function getProductForm() {
+      return document.querySelector('form[action*="/cart/add"]');
+    }
+    
+    function getCurrentVariantIdFromForm() {
+      const form = getProductForm();
+      const input = form && form.querySelector('input[name="id"]');
+      return input && input.value ? input.value : null;
+    }
+    
+    function getProductSubmitButton() {
+      const form = getProductForm();
+      if (!form) return null;
+      return form.querySelector('button[type="submit"], button[name="add"], [name="add"]');
+    }
+    
+    function getVariantOptionValues(variant) {
+      if (!variant) return [];
+      const values = [];
+      
+      if (Array.isArray(variant.options)) {
+        variant.options.forEach(value => {
+          if (value) values.push(String(value));
+        });
+      }
+      
+      ['option1', 'option2', 'option3'].forEach(key => {
+        if (variant[key]) values.push(String(variant[key]));
+      });
+      
+      return values.filter((value, index, array) => array.indexOf(value) === index);
+    }
+    
+    function getVariantTextCandidates(variant) {
+      const pieces = [];
+      [variant && variant.title, variant && variant.name, variant && variant.public_title].forEach(value => {
+        if (!value) return;
+        const text = String(value);
+        pieces.push(text);
+        text.split('/').forEach(part => pieces.push(part.trim()));
+      });
+      return pieces.filter(Boolean);
+    }
+    
+    function getProductVariants() {
+      if (Array.isArray(cachedProductVariants)) return cachedProductVariants;
+      
+      const directSources = [
+        window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product && window.ShopifyAnalytics.meta.product.variants,
+        window.meta && window.meta.product && window.meta.product.variants
+      ];
+      
+      for (const source of directSources) {
+        if (Array.isArray(source) && source.length) {
+          cachedProductVariants = source;
+          return cachedProductVariants;
+        }
+      }
+      
+      const scripts = Array.from(document.querySelectorAll('script[type="application/json"]'));
+      for (const script of scripts) {
+        const raw = (script.textContent || '').trim();
+        if (!raw || raw.length > 300000) continue;
+        if (!raw.includes('variant') && !raw.includes('option')) continue;
+        
+        try {
+          const parsed = JSON.parse(raw);
+          const variants = Array.isArray(parsed && parsed.variants)
+            ? parsed.variants
+            : Array.isArray(parsed && parsed.product && parsed.product.variants)
+              ? parsed.product.variants
+              : null;
+          
+          if (Array.isArray(variants) && variants.length) {
+            cachedProductVariants = variants;
+            return cachedProductVariants;
+          }
+        } catch (_) {
+          // Ignore unrelated JSON blobs.
+        }
+      }
+      
+      cachedProductVariants = [];
+      return cachedProductVariants;
+    }
+    
+    function getCurrentVariantFromProductData() {
+      const currentVariantId = getCurrentVariantIdFromForm();
+      const variants = getProductVariants();
+      if (!currentVariantId || !variants.length) return null;
+      return variants.find(variant => String(variant.id) === String(currentVariantId)) || null;
+    }
+    
+    function productFormShowsSoldOut() {
+      const submitButton = getProductSubmitButton();
+      if (!submitButton) return false;
+      const submitText = String(submitButton.textContent || '').trim();
+      if (/(sold\s*out|out\s*of\s*stock|unavailable)/i.test(submitText)) return true;
+      if (submitButton.disabled) return true;
+      return false;
+    }
+    
+    function currentSelectionMatchesRecommendedSize(sizeLabel) {
+      const normalizedTarget = normalizeSizeLabel(sizeLabel);
+      if (!normalizedTarget) return false;
+      
+      const currentVariant = getCurrentVariantFromProductData();
+      if (currentVariant) {
+        if (getVariantOptionValues(currentVariant).some(value => normalizeSizeLabel(value) === normalizedTarget)) {
+          return true;
+        }
+        if (getVariantTextCandidates(currentVariant).some(value => normalizeSizeLabel(value) === normalizedTarget)) {
+          return true;
+        }
+      }
+      
+      const matchedControl = findMatchingSizeControl(sizeLabel);
+      if (!matchedControl) return false;
+      if (matchedControl.matches && matchedControl.matches(':checked, [selected], [aria-pressed="true"], .is-selected, .selected')) {
+        return true;
+      }
+      const selectedAncestor = matchedControl.closest && matchedControl.closest('[aria-pressed="true"], .is-selected, .selected');
+      return !!selectedAncestor;
+    }
+    
+    function isVariantSoldOut(variant) {
+      if (!variant) return false;
+      if (variant.available === false) return true;
+      
+      const inventoryPolicy = String(variant.inventory_policy || '').toLowerCase();
+      const inventoryManagement = variant.inventory_management;
+      const inventoryQuantity = Number(variant.inventory_quantity);
+      
+      if (inventoryManagement && inventoryPolicy !== 'continue' && !Number.isNaN(inventoryQuantity) && inventoryQuantity <= 0) {
+        return true;
+      }
+      
+      return false;
+    }
+    
+    function getControlTextCandidates(control) {
+      if (!control) return [];
+      const nearby = [
+        control,
+        control.parentElement,
+        control.closest && control.closest('label'),
+        control.closest && control.closest('button'),
+        control.closest && control.closest('[role="option"]')
+      ].filter(Boolean);
+      
+      const values = [];
+      nearby.forEach(element => {
+        values.push(
+          element.value,
+          element.getAttribute && element.getAttribute('value'),
+          element.getAttribute && element.getAttribute('aria-label'),
+          element.getAttribute && element.getAttribute('title'),
+          element.dataset && (element.dataset.value || element.dataset.optionValue),
+          element.textContent
+        );
+      });
+      
+      return values.filter(Boolean).map(value => String(value).trim());
+    }
+    
+    function isControlDisabled(control) {
+      if (!control) return false;
+      if (control.disabled) return true;
+      if (control.getAttribute && control.getAttribute('aria-disabled') === 'true') return true;
+      const disabledAncestor = control.closest && control.closest('[disabled], [aria-disabled="true"]');
+      return !!disabledAncestor;
+    }
+    
+    function controlLooksSoldOut(control) {
+      return getControlTextCandidates(control).some(value => /(sold\s*out|out\s*of\s*stock|unavailable)/i.test(value));
+    }
+    
+    function findMatchingSizeControl(sizeLabel) {
+      const normalizedTarget = normalizeSizeLabel(sizeLabel);
+      if (!normalizedTarget) return null;
+      
+      const controls = Array.from(document.querySelectorAll(
+        'input[type="radio"], option, button, label, select option'
+      ));
+      
+      for (const control of controls) {
+        const candidates = [
+          control.value,
+          control.getAttribute && control.getAttribute('value'),
+          control.dataset && (control.dataset.value || control.dataset.optionValue),
+          control.textContent,
+          control.getAttribute && control.getAttribute('aria-label')
+        ].filter(Boolean);
+        
+        if (candidates.some(value => normalizeSizeLabel(value) === normalizedTarget)) {
+          return control;
+        }
+      }
+      
+      return null;
+    }
+    
+    function resolveVariantForRecommendedSize(sizeLabel) {
+      const normalizedTarget = normalizeSizeLabel(sizeLabel);
+      const variants = getProductVariants();
+      if (!normalizedTarget || !variants.length) return null;
+      
+      const currentVariant = getCurrentVariantFromProductData();
+      const currentOptions = getVariantOptionValues(currentVariant);
+      
+      const candidates = variants.map(variant => {
+        const optionValues = getVariantOptionValues(variant);
+        const matchingOptionIndexes = [];
+        
+        optionValues.forEach((value, index) => {
+          if (normalizeSizeLabel(value) === normalizedTarget) {
+            matchingOptionIndexes.push(index);
+          }
+        });
+        
+        let matched = matchingOptionIndexes.length > 0;
+        if (!matched) {
+          matched = getVariantTextCandidates(variant).some(value => normalizeSizeLabel(value) === normalizedTarget);
+        }
+        
+        if (!matched) return null;
+        
+        let score = 0;
+        optionValues.forEach((value, index) => {
+          if (matchingOptionIndexes.indexOf(index) >= 0) {
+            score += 5;
+            return;
+          }
+          
+          const currentValue = currentOptions[index];
+          if (currentValue && String(currentValue).trim().toLowerCase() === String(value).trim().toLowerCase()) {
+            score += 2;
+          }
+        });
+        
+        if (currentVariant && String(variant.id) === String(currentVariant.id)) {
+          score += 1;
+        }
+        
+        if (!isVariantSoldOut(variant)) {
+          score += 0.5;
+        }
+        
+        return { variant, score };
+      }).filter(Boolean);
+      
+      if (!candidates.length) {
+        return { status: 'size_not_available' };
+      }
+      
+      candidates.sort((left, right) => right.score - left.score);
+      const selected = candidates[0].variant;
+      return {
+        status: isVariantSoldOut(selected) ? 'sold_out' : 'available',
+        variantId: selected.id ? String(selected.id) : null,
+        variant: selected
+      };
+    }
+    
+    function getRecommendedSizePurchaseState(sizeLabel) {
+      if (currentSelectionMatchesRecommendedSize(sizeLabel) && productFormShowsSoldOut()) {
+        return { status: 'sold_out' };
+      }
+      
+      const variantState = resolveVariantForRecommendedSize(sizeLabel);
+      if (variantState) return variantState;
+      
+      const control = findMatchingSizeControl(sizeLabel);
+      if (!control) {
+        return { status: 'size_not_available' };
+      }
+      
+      if (isControlDisabled(control) || controlLooksSoldOut(control)) {
+        return { status: 'sold_out' };
+      }
+      
+      return { status: 'available', control };
+    }
+    
+    function syncSizeSelectionOnProductForm(sizeLabel) {
+      const control = findMatchingSizeControl(sizeLabel);
+      if (!control) return false;
+      
+      if (isControlDisabled(control) || controlLooksSoldOut(control)) {
+        return false;
+      }
+      
+      const tag = control.tagName.toLowerCase();
+      if (tag === 'option' && control.parentElement) {
+        control.parentElement.value = control.value;
+        control.parentElement.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (tag === 'input') {
+        control.checked = true;
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+        control.dispatchEvent(new Event('input', { bubbles: true }));
+      } else {
+        control.click();
+      }
+      
+      return true;
+    }
+    
+    async function selectSizeOnProductForm(sizeLabel) {
+      const state = getRecommendedSizePurchaseState(sizeLabel);
+      if (state.status !== 'available') {
+        return state;
+      }
+      
+      const clicked = syncSizeSelectionOnProductForm(sizeLabel);
+      if (clicked) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      
+      const submitButton = getProductSubmitButton();
+      const submitText = submitButton ? String(submitButton.textContent || '').trim() : '';
+      if ((submitButton && submitButton.disabled && /(sold\s*out|out\s*of\s*stock|unavailable)/i.test(submitText)) || (!clicked && !state.variantId)) {
+        return { status: 'sold_out' };
+      }
+      
+      const variantId = state.variantId || getCurrentVariantIdFromForm();
+      if (!variantId) {
+        return { status: 'size_not_available' };
+      }
+      
+      return { status: 'available', variantId };
+    }
+    
+    function getAtcNoticeMarkup(message, tone) {
+      const palette = tone === 'error'
+        ? {
+            background: '#fff4f4',
+            border: '#f3b3b3',
+            color: '#a53b3b'
+          }
+        : {
+            background: '#fff8ef',
+            border: '#f0cf9a',
+            color: '#9a610d'
+          };
+      
+      return '<div class="size-buddy-atc-status" style="margin-top:10px;padding:12px 14px;border-radius:12px;background:' + palette.background + ';border:1px solid ' + palette.border + ';color:' + palette.color + ';font-size:14px;font-weight:600;line-height:1.4;">' + message + '</div>';
+    }
+    
+    function replaceAtcButtonWithMessage(buttonEl, message, tone) {
+      if (!buttonEl || !buttonEl.parentNode) return;
+      buttonEl.outerHTML = getAtcNoticeMarkup(message, tone);
+    }
+    
+    function getRecommendedSizeCtaMarkup(sizeLabel) {
+      const state = getRecommendedSizePurchaseState(sizeLabel);
+      if (state.status === 'sold_out') {
+        return getAtcNoticeMarkup('Size ' + sizeLabel + ' is sold out for this product.', 'warning');
+      }
+      
+      if (state.status === 'size_not_available') {
+        return getAtcNoticeMarkup('Size ' + sizeLabel + ' is not available for this product.', 'error');
+      }
+      
+      return '<button id="size-buddy-add-to-cart" class="size-buddy-atc-button" style="margin-top:10px;width:100%;padding:14px 20px;background-color:' + atcButtonColor + ';color:#FFFFFF;border:none;border-radius:999px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.12);transition:all 0.2s ease;">Add Size ' + sizeLabel + ' to Cart</button>';
+    }
+    
+    function scrollRecommendedCardIntoView() {
+      try {
+        const card = document.querySelector('#size-buddy-result .size-buddy-result-container');
+        if (!card) return;
+        const targetTop = Math.max(0, card.offsetTop - 12);
+        modalContent.scrollTo({ top: targetTop, behavior: 'smooth' });
+      } catch (error) {
+        console.error('Size Buddy: unable to scroll recommendation card into view', error);
+      }
+    }
+    
+    function animateAtcButtonSuccess(buttonEl) {
+      if (!buttonEl) return;
+      buttonEl.textContent = 'Added to Cart!';
+      buttonEl.style.backgroundColor = '#59c93d';
+      buttonEl.style.boxShadow = '0 8px 18px rgba(89,201,61,0.28)';
+      buttonEl.style.transform = 'translateY(-1px) scale(1.01)';
+      buttonEl.style.opacity = '1';
+    }
+    
+    // Helper: add recommended size to cart via AJAX only
+    async function addRecommendedSizeToCart(bestSize, buttonEl) {
+      if (!bestSize) return;
+      try {
+        await ensureProductVariantsLoaded();
+        if (buttonEl) {
+          buttonEl.disabled = true;
+          buttonEl.textContent = 'Adding...';
+          buttonEl.style.opacity = '0.9';
+          buttonEl.style.transform = 'translateY(0) scale(0.99)';
+        }
+        
+        const selection = await selectSizeOnProductForm(bestSize);
+        if (selection.status === 'sold_out') {
+          const error = new Error('Size ' + bestSize + ' is sold out for this product.');
+          error.code = 'sold_out';
+          throw error;
+        }
+        
+        if (selection.status === 'size_not_available' || !selection.variantId) {
+          const error = new Error('Size ' + bestSize + ' is not available for this product.');
+          error.code = 'size_not_available';
+          throw error;
+        }
+        
+        const resp = await fetch('/cart/add.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ id: selection.variantId, quantity: 1 })
+        });
+        
+        if (!resp.ok) {
+          let errorMessage = 'Add to cart failed with ' + resp.status;
+          try {
+            const payload = await resp.json();
+            const description = payload && (payload.description || payload.message || payload.error);
+            if (description) errorMessage = description;
+          } catch (_) {
+            // Keep default error message.
+          }
+          
+          const error = new Error(errorMessage);
+          if (/sold\s*out|out\s*of\s*stock|available quantity/i.test(errorMessage)) {
+            error.code = 'sold_out';
+          } else if (/not available|cannot find variant|no valid id|unavailable/i.test(errorMessage)) {
+            error.code = 'size_not_available';
+          }
+          throw error;
+        }
+        
+        await resp.json();
+        animateAtcButtonSuccess(buttonEl);
+        
+        document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
+        document.documentElement.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
+        window.dispatchEvent(new CustomEvent('cart:refresh'));
+      } catch (error) {
+        console.error('Size Buddy: error adding recommended size to cart', error);
+        if (buttonEl) {
+          if (error.code === 'sold_out') {
+            replaceAtcButtonWithMessage(buttonEl, 'Size ' + bestSize + ' is sold out for this product.', 'warning');
+            return;
+          }
+          
+          if (error.code === 'size_not_available') {
+            replaceAtcButtonWithMessage(buttonEl, 'Size ' + bestSize + ' is not available for this product.', 'error');
+            return;
+          }
+          
+          buttonEl.disabled = false;
+          buttonEl.textContent = 'Add Size ' + bestSize + ' to Cart';
+          buttonEl.style.opacity = '1';
+          buttonEl.style.transform = 'translateY(0)';
+        }
+      }
+    }
+    
+    // Add slider styles (scoped to modal content so theme CSS cannot override)
     const styleEl = document.createElement('style');
+    styleEl.id = 'size-buddy-slider-styles';
     styleEl.textContent = `
-      .size-slider-container {
+      #size-buddy-content .size-slider-container {
         margin-bottom: 25px !important;
       }
       
@@ -212,73 +796,82 @@
       }
       
       .slider-value {
-        color: #4A90E2 !important;
         font-weight: 600 !important;
-        background-color: #f1f8fe !important;
         padding: 4px 8px !important;
         border-radius: 4px !important;
         min-width: 40px !important;
         text-align: center !important;
       }
       
-      .slider-container {
+      #size-buddy-content .slider-container {
         position: relative !important;
         height: 40px !important;
         width: 100% !important;
+        overflow: visible !important;
       }
       
-      .slider-track {
+      #size-buddy-content .slider-track {
         position: absolute !important;
         top: 50% !important;
         left: 0 !important;
         right: 0 !important;
         transform: translateY(-50%) !important;
         width: 100% !important;
-        height: 6px !important;
-        background-color: #e0e0e0 !important;
-        border-radius: 3px !important;
+        height: 8px !important;
+        background-color: ${sliderTrackColor} !important;
+        border-radius: 4px !important;
         z-index: 0 !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: none !important;
       }
       
-      .slider-filled {
+      #size-buddy-content .slider-filled {
         position: absolute !important;
         top: 50% !important;
         left: 0 !important;
         transform: translateY(-50%) !important;
-        height: 6px !important;
-        background-color: #4A90E2 !important;
-        border-radius: 3px !important;
+        height: 8px !important;
+        min-width: 4px !important;
+        background-color: ${sliderFillColor} !important;
+        border-radius: 4px !important;
         z-index: 1 !important;
+        transition: width 0.15s ease !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: none !important;
       }
       
-      .slider-handle {
+      #size-buddy-content .slider-handle {
         position: absolute !important;
         top: 50% !important;
         transform: translate(-50%, -50%) !important;
-        width: 22px !important;
-        height: 22px !important;
+        width: 24px !important;
+        height: 24px !important;
         background-color: white !important;
-        border: 2px solid #4A90E2 !important;
+        border: 2px solid ${sliderFillColor} !important;
         border-radius: 50% !important;
         cursor: pointer !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
         z-index: 2 !important;
         display: block !important;
       }
       
-      .slider-handle:hover {
-        transform: translate(-50%, -50%) scale(1.1) !important;
-        box-shadow: 0 3px 8px rgba(0,0,0,0.2) !important;
+      #size-buddy-content .slider-handle:hover {
+        transform: translate(-50%, -50%) scale(1.08) !important;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2) !important;
       }
       
-      .slider-ticks {
+      #size-buddy-content .slider-ticks {
         position: absolute !important;
         top: 50% !important;
         left: 0 !important;
         right: 0 !important;
         transform: translateY(-50%) !important;
         width: 100% !important;
-        height: 6px !important;
+        height: 8px !important;
         display: flex !important;
         justify-content: space-between !important;
         pointer-events: none !important;
@@ -299,11 +892,20 @@
         font-size: 12px !important;
         color: #666 !important;
       }
+      
+      .size-buddy-modal-submit:hover {
+        opacity: 0.9 !important;
+        transform: translateY(-1px);
+      }
+      
+      .size-buddy-modal-submit:active {
+        transform: translateY(0);
+      }
     `;
     document.head.appendChild(styleEl);
     
     // Initial content - will be replaced with actual size form
-    contentDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#666;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#4A90E2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><p style="margin-top:10px;">Loading size recommendations...</p></div>';
+    contentDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#666;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="' + (sliderFillColor || '#4A90E2') + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><p style="margin-top:10px;">Loading size recommendations...</p></div>';
     
     // Append elements
     modalContent.appendChild(closeBtn);
@@ -337,16 +939,36 @@
     // Function to fetch size data and render form
     async function fetchSizeData(productId, shopDomain, contentDiv) {
       try {
-        // Add timestamp to prevent caching
-        const timestamp = Date.now();
-        // Use current domain (handles custom domains like rouqegolf.com)
-        const currentDomain = window.location.hostname;
-        // Preferred: use app proxy (works in production, signed by Shopify)
-        const proxyUrl = 'https://' + currentDomain + '/apps/size-buddy/size-charts?product_id=' + productId + '&_=' + timestamp;
-        // Fallback (public, read-only): server public endpoint
-        const directUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com') + '/public/size-charts?product_id=' + productId + '&shop=' + shopDomain + '&_=' + timestamp;
+        // Resolve backend base URL: block setting (data-backend-url) for local testing, else window.SIZE_BUDDY_HOST, else production
+        const widgetEl = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
+        const backendBase = (widgetEl && widgetEl.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
+        const backendBaseClean = (backendBase || '').replace(/\/$/, '');
+
+        // Modal/slider colors from block settings (same button colors used for modal button)
+        const modalBtnColor = (widgetEl && widgetEl.getAttribute('data-button-color')) || '#4A90E2';
+        const modalBtnTextColor = (widgetEl && widgetEl.getAttribute('data-button-text-color')) || '#FFFFFF';
+        const sliderTrackColor = (widgetEl && widgetEl.getAttribute('data-slider-track-color')) || '#d8d8d8';
+        const sliderFillColor = (widgetEl && widgetEl.getAttribute('data-slider-fill-color')) || '#4A90E2';
         
-        console.log('Fetching size data from:', proxyUrl);
+        const timestamp = Date.now();
+        const currentDomain = window.location.hostname;
+        const resolvedShopDomain = shopDomain ||
+          (window.Shopify && window.Shopify.shop) ||
+          document.documentElement.getAttribute('data-shop-domain') ||
+          currentDomain;
+        // Preferred: use app proxy (works in production, signed by Shopify)
+        // Include shop so backend always has it even when the proxy drops it
+        const proxyParams = new URLSearchParams({
+          product_id: String(productId),
+          shop: resolvedShopDomain,
+          _: String(timestamp)
+        });
+        const proxyUrl = '/apps/size-buddy/size-charts?' + proxyParams.toString();
+        // Fallback (public, read-only): backend public endpoint – uses local ngrok when Backend URL is set for testing
+        const directUrl = backendBaseClean + '/public/size-charts?product_id=' + productId + '&shop=' + encodeURIComponent(resolvedShopDomain) + '&_=' + timestamp;
+        
+        await ensureProductVariantsLoaded();
+        console.log('Fetching size data from:', proxyUrl, 'resolved shop:', resolvedShopDomain);
         
         let response = await fetch(proxyUrl);
         if (!response.ok) {
@@ -365,13 +987,35 @@
           return;
         }
         
-        const chart = data.chart;
+        const rawChart = data.chart || data.sizeChart;
+        if (!rawChart) {
+          throw new Error('No chart payload found in response');
+        }
+
+        const chart = {
+          ...rawChart,
+          custom_size_chart_image: rawChart.custom_size_chart_image ||
+            (rawChart.chart_data && rawChart.chart_data.custom_size_chart_image) ||
+            data.custom_size_chart_image ||
+            null
+        };
+
+        if (Array.isArray(data.product_variants) && data.product_variants.length) {
+          cachedProductVariants = data.product_variants;
+        } else if (Array.isArray(chart.product_variants) && chart.product_variants.length) {
+          cachedProductVariants = chart.product_variants;
+        }
+
+        console.log('Size Buddy: chart payload received', {
+          chartId: chart.id,
+          hasCustomSizeChartImage: !!chart.custom_size_chart_image
+        });
         
         // Log widget view for analytics (only once when widget is displayed)
         if (!window.sizeBuddyViewLogged) window.sizeBuddyViewLogged = {};
         if (!window.sizeBuddyViewLogged[productId]) {
           try {
-            const backendUrl = (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com');
+            const backendUrl = backendBaseClean;
             await fetch(`${backendUrl}/api/log-widget-view`, {
               method: 'POST',
               headers: {
@@ -400,7 +1044,7 @@
           const firstSize = chart.sizes[0];
           Object.keys(firstSize).forEach(key => {
             // Skip the relative_size field and score field
-            if (key !== 'name' && key !== 'size' && key !== 'relative_size' && key !== 'score' && key !== 'optional_measurements') {
+            if (key !== 'name' && key !== 'size' && key !== 'relative_size' && key !== 'score' && key !== 'optional_measurements' && key !== 'enabled') {
               // Check if this is a cup size measurement
               const isCupSize = key.toLowerCase().includes('cup');
               
@@ -566,7 +1210,7 @@
               <div class="size-slider-container" data-measurement="height" style="margin-bottom:25px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                   <span style="font-weight:500;color:#333;font-size:15px;">Height (in)</span>
-                  <div class="slider-value" id="size-buddy-value-height" data-value="${initialValue}" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">
+                  <div class="slider-value" id="size-buddy-value-height" data-value="${initialValue}" style="color:${sliderFillColor};font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">
                     ${formatHeightValue(initialValue)}
                   </div>
                 </div>
@@ -575,11 +1219,11 @@
                      data-max="${max}"
                      data-height-values='${JSON.stringify(displayHeights)}'
                      style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">
-                  <div class="slider-track"></div>
-                  <div class="slider-filled" style="width:${initialPercent}%"></div>
-                  <div class="slider-handle" style="left:${initialPercent}%"></div>
-                  <div class="slider-ticks">
-                    ${displayHeights.map(() => '<div class="tick"></div>').join('')}
+                  <div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:${sliderTrackColor};border-radius:4px;z-index:0;"></div>
+                  <div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:${initialPercent}%;background-color:${sliderFillColor};border-radius:4px;z-index:1;"></div>
+                  <div class="slider-handle" style="position:absolute;top:50%;left:${initialPercent}%;transform:translate(-50%,-50%);width:24px;height:24px;background-color:#fff;border:2px solid ${sliderFillColor};border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;"></div>
+                  <div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">
+                    ${displayHeights.map(() => '<div class="tick" style="width:2px;height:10px;background-color:#ccc;border-radius:1px;"></div>').join('')}
                   </div>
                 </div>
                 <div class="slider-labels" style="display:flex;justify-content:space-between;margin-top:5px;">
@@ -602,15 +1246,15 @@
             formHtml += '<div class="size-slider-container cup-size-slider" data-measurement="' + measurement.id + '" style="margin-bottom:25px;">' +
               '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
                 '<span style="font-weight:500;color:#333;font-size:15px;">' + measurement.name + '</span>' +
-                '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + cupSizes[initialValue] + '</div>' +
+                '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" style="color:' + sliderFillColor + ';font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + cupSizes[initialValue] + '</div>' +
               '</div>' +
               '<div class="slider-container cup-size-container" data-min="0" data-max="' + maxValue + '" data-sizes="' + cupSizes.join(',') + '" style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">' +
-                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:6px;background-color:#e0e0e0;border-radius:3px;z-index:1;"></div>' +
-                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:6px;width:0%;background-color:#4A90E2;border-radius:3px;z-index:2;"></div>' +
-                '<div class="slider-handle" style="position:absolute;top:50%;left:0%;transform:translate(-50%, -50%);width:22px;height:22px;background-color:white;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1);z-index:3;display:block;"></div>';
+                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:' + sliderTrackColor + ';border-radius:4px;z-index:0;"></div>' +
+                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:' + (maxValue > 0 ? (initialValue / maxValue * 100) : 0) + '%;background-color:' + sliderFillColor + ';border-radius:4px;z-index:1;"></div>' +
+                '<div class="slider-handle" style="position:absolute;top:50%;left:' + (maxValue > 0 ? (initialValue / maxValue * 100) : 0) + '%;transform:translate(-50%, -50%);width:24px;height:24px;background-color:white;border:2px solid ' + sliderFillColor + ';border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;display:block;"></div>';
             
             // Add ticks for each cup size
-            formHtml += '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:6px;display:flex;justify-content:space-between;pointer-events:none;z-index:1;">';
+            formHtml += '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">';
             for (let i = 0; i <= maxValue; i++) {
               formHtml += '<div style="width:4px;height:10px;background-color:#ccc;border-radius:2px;"></div>';
             }
@@ -653,59 +1297,68 @@
             formHtml += '<div class="size-slider-container" data-measurement="' + measurement.id + '" style="margin-bottom:25px;">' +
               '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
                 '<span style="font-weight:500;color:#333;font-size:15px;">' + measurement.name + (measurement.unit ? ' (' + measurement.unit + ')' : '') + '</span>' +
-                '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" data-value="' + measurement.defaultValue + '" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + displayDefaultValue + '</div>' +
+                '<div class="slider-value" id="size-buddy-value-' + measurement.id + '" data-value="' + measurement.defaultValue + '" style="color:' + sliderFillColor + ';font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">' + displayDefaultValue + '</div>' +
               '</div>' +
               '<div class="slider-container" data-min="' + measurement.min + '" data-max="' + measurement.max + '" style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">' +
-                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:6px;background-color:#e0e0e0;border-radius:3px;z-index:1;"></div>' +
-                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:6px;width:' + initialPercent + '%;background-color:#4A90E2;border-radius:3px;z-index:2;"></div>' +
-                '<div class="slider-handle" style="position:absolute;top:50%;left:' + initialPercent + '%;transform:translate(-50%, -50%);width:22px;height:22px;background-color:white;border:2px solid #4A90E2;border-radius:50%;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1);z-index:3;display:block;"></div>' +
-                '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:6px;display:flex;justify-content:space-between;pointer-events:none;z-index:1;">' + ticksHtml + '</div>' +
+                '<div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:' + sliderTrackColor + ';border-radius:4px;z-index:0;"></div>' +
+                '<div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:' + initialPercent + '%;background-color:' + sliderFillColor + ';border-radius:4px;z-index:1;"></div>' +
+                '<div class="slider-handle" style="position:absolute;top:50%;left:' + initialPercent + '%;transform:translate(-50%, -50%);width:24px;height:24px;background-color:white;border:2px solid ' + sliderFillColor + ';border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;display:block;"></div>' +
+                '<div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">' + ticksHtml + '</div>' +
               '</div>' +
               '<div class="slider-labels" style="display:flex;justify-content:space-between;margin-top:5px;">' + labelsHtml + '</div>' +
             '</div>';
           }
         });
         
-        // Add button
+        // Add button (modal "Find My Size" uses same colors as block button settings)
         formHtml += '<div class="size-buddy-form-group" style="margin-top:30px;">' +
                    '<button id="size-buddy-get-recommendation" ' +
-                   'class="size-buddy-button" ' +
-                   'style="width:100%;padding:15px;background-color:#4A90E2;color:white;border:none;border-radius:8px;font-size:16px;font-weight:500;cursor:pointer;transition:background-color 0.2s;">' +
+                   'class="size-buddy-button size-buddy-modal-submit" ' +
+                   'style="width:100%;padding:16px 24px;background-color:' + modalBtnColor + ';color:' + modalBtnTextColor + ';border:none;border-radius:16px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.2s ease;box-shadow:0 2px 8px rgba(0,0,0,0.15);">' +
                    'Find My Size' +
                    '</button>' +
                    '</div>';
         formHtml += '<div id="size-buddy-result" style="margin-top:20px;"></div>';
         formHtml += '</div>';
         
-        // Add size chart with modern styling
+        // Add size chart display with modern styling
         formHtml += '<div style="margin-top:30px;">' +
-          '<h3 style="text-align:center;color:#333;margin-bottom:20px;">Size Chart</h3>' +
-          '<div style="overflow-x:auto;">' +
-          '<table style="width:100%;border-collapse:collapse;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.1);border-radius:8px;">' +
-          '<thead><tr>' +
-          '<th style="border:1px solid #f0f0f0;padding:12px;background-color:#f8f9fa;text-align:center;font-weight:600;color:#333;">Size</th>';
+          '<h3 style="text-align:center;color:#333;margin-bottom:20px;">Size Chart</h3>';
 
-        // Add measurement headers
-        measurements.forEach(m => {
-          formHtml += '<th style="border:1px solid #f0f0f0;padding:12px;background-color:#f8f9fa;text-align:center;font-weight:600;color:#333;">' + m.name + '</th>';
-        });
+        if (chart.custom_size_chart_image) {
+          formHtml += '<div style="background:white;box-shadow:0 1px 3px rgba(0,0,0,0.1);border-radius:12px;padding:12px;">' +
+            '<img src="' + chart.custom_size_chart_image + '" alt="Size chart" style="display:block;width:100%;height:auto;border-radius:8px;">' +
+            '</div>';
+        } else {
+          formHtml += '<div style="overflow-x:auto;">' +
+            '<table style="width:100%;border-collapse:collapse;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.1);border-radius:8px;">' +
+            '<thead><tr>' +
+            '<th style="border:1px solid #f0f0f0;padding:12px;background-color:#f8f9fa;text-align:center;font-weight:600;color:#333;">Size</th>';
 
-        formHtml += '</tr></thead><tbody>';
-
-        // Add size rows
-        chart.sizes.forEach((size, idx) => {
-          const sizeName = size.size || size.name;
-          formHtml += '<tr id="size-chart-row-' + sizeName + '" style="' + (idx % 2 === 0 ? 'background-color:#ffffff;' : 'background-color:#fafafa;') + '">' +
-            '<td style="border:1px solid #f0f0f0;padding:12px;text-align:center;font-weight:600;color:#333;">' + sizeName + '</td>';
-
+          // Add measurement headers
           measurements.forEach(m => {
-            formHtml += '<td style="border:1px solid #f0f0f0;padding:12px;text-align:center;color:#666;">' + (size[m.id] || '-') + '</td>';
+            formHtml += '<th style="border:1px solid #f0f0f0;padding:12px;background-color:#f8f9fa;text-align:center;font-weight:600;color:#333;">' + m.name + '</th>';
           });
 
-          formHtml += '</tr>';
-        });
+          formHtml += '</tr></thead><tbody>';
 
-        formHtml += '</tbody></table></div></div>';
+          // Add size rows
+          chart.sizes.forEach((size, idx) => {
+            const sizeName = size.size || size.name;
+            formHtml += '<tr id="size-chart-row-' + sizeName + '" style="' + (idx % 2 === 0 ? 'background-color:#ffffff;' : 'background-color:#fafafa;') + '">' +
+              '<td style="border:1px solid #f0f0f0;padding:12px;text-align:center;font-weight:600;color:#333;">' + sizeName + '</td>';
+
+            measurements.forEach(m => {
+              formHtml += '<td style="border:1px solid #f0f0f0;padding:12px;text-align:center;color:#666;">' + (size[m.id] || '-') + '</td>';
+            });
+
+            formHtml += '</tr>';
+          });
+
+          formHtml += '</tbody></table></div>';
+        }
+
+        formHtml += '</div>';
         
         // Set the content
         contentDiv.innerHTML = formHtml;
@@ -886,10 +1539,11 @@
               opt.style.color = '#333';
             });
             
-            // Highlight selected option
-            this.style.borderColor = '#4A90E2';
+            // Highlight selected option (use slider fill color from widget)
+            const fillColor = (document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]'))?.getAttribute('data-slider-fill-color') || '#4A90E2';
+            this.style.borderColor = fillColor;
             this.style.backgroundColor = '#f1f8fe';
-            this.style.color = '#4A90E2';
+            this.style.color = fillColor;
             
             // Update value display
             valueDisplay.textContent = this.dataset.value;
@@ -984,15 +1638,19 @@
         // Check if this is a tops category chart and we have height and weight
         const isTopsCategory = chart.category && chart.category.toLowerCase() === 'tops';
         const isBottomsCategory = chart.category && chart.category.toLowerCase() === 'bottoms';
+        const normalizedChartCategory = chart.category ? chart.category.toLowerCase().replace(/[\s_-]/g, '') : '';
+        const isOnePiecesCategory = normalizedChartCategory === 'onepieces';
         const hasHeightAndWeight = userMeasurements.height && userMeasurements.weight;
         const hasWaistAndHip = userMeasurements.waist && userMeasurements.hip;
+        const hasHipAndCup = userMeasurements.hip && userMeasurements.cup_size;
+        const hasHipBandAndCup = userMeasurements.hip && userMeasurements.band_size && userMeasurements.cup_size;
         
         // Tops sizing: rule-guided scoring that avoids undersizing near top-of-range
         if (isTopsCategory && hasHeightAndWeight) {
           const heightInches = parseFloat(userMeasurements.height);
           const weightLbs = parseFloat(userMeasurements.weight);
 
-          const order = ['XS','S','M','L','XL','XXL'];
+          const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
           const candidates = [];
 
           chart.sizes.forEach(size => {
@@ -1098,7 +1756,7 @@
           // 1) Pick sizes that fit waist within ±1" tolerance
           // 2) Among them, choose the smallest size whose hip max accommodates the user's hip;
           //    if none do, size up until hips fit.
-          const order = ['XS','S','M','L','XL','XXL'];
+          const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
           const waistTol = 1; // inches
           const hipTol = 0;   // require hips to be within range; adjust if you want forgiveness
 
@@ -1141,6 +1799,134 @@
           if (chosen) {
             bestSize = chosen.name;
             bestScore = 1;
+          }
+        } else if (isOnePiecesCategory && hasHipAndCup) {
+          const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
+          const cupOrder = ['A','B','C','D','DD','DDD','F','G','H+'];
+          const parseCupIndex = (value) => {
+            if (typeof value !== 'string') return null;
+            const normalizedValue = value.trim().toUpperCase();
+            const idx = cupOrder.indexOf(normalizedValue);
+            return idx >= 0 ? idx : null;
+          };
+          const parseCupRange = (value) => {
+            if (typeof value !== 'string' || !value.includes('-')) return null;
+            const [minCup, maxCup] = value.split('-').map((part) => part.trim().toUpperCase());
+            const minIndex = parseCupIndex(minCup);
+            const maxIndex = parseCupIndex(maxCup);
+            if (minIndex === null || maxIndex === null) return null;
+            return [Math.min(minIndex, maxIndex), Math.max(minIndex, maxIndex)];
+          };
+          const parseNumericRange = (value) => {
+            if (typeof value !== 'string' || !value.includes('-')) return null;
+            const [minValue, maxValue] = value.split('-').map((part) => parseFloat(part.replace('+', '').trim()));
+            if (isNaN(minValue) || isNaN(maxValue)) return null;
+            return [Math.min(minValue, maxValue), Math.max(minValue, maxValue)];
+          };
+
+          const userHip = parseFloat(userMeasurements.hip);
+          const userBand = parseFloat(userMeasurements.band_size);
+          const userCupIndex = parseCupIndex(String(userMeasurements.cup_size));
+          const candidates = [];
+
+          chart.sizes.forEach((size) => {
+            const sizeName = size.size || size.name;
+            let hipMin = NaN;
+            let hipMax = NaN;
+            let bandMin = NaN;
+            let bandMax = NaN;
+            let hipScore = 0;
+            let bandScore = 0;
+            let cupScore = 0;
+
+            const hipRange = parseNumericRange(size.hip);
+            if (hipRange) {
+              [hipMin, hipMax] = hipRange;
+              const hipHalf = ((hipMax - hipMin) || 1) / 2;
+              const hipCenter = (hipMin + hipMax) / 2;
+              const hipInside = userHip >= hipMin && userHip <= hipMax;
+
+              if (hipInside) {
+                const base = Math.max(0, 1 - (Math.abs(userHip - hipCenter) / hipHalf));
+                hipScore = 0.65 + (0.35 * base);
+              } else if (userHip > hipMax) {
+                const excess = userHip - hipMax;
+                const range = hipMax - hipMin;
+                const excessRatio = excess / (range || 1);
+                hipScore = Math.max(0, 0.2 - (excessRatio * 0.2));
+              } else {
+                const base = Math.max(0, 1 - (Math.abs(userHip - hipCenter) / hipHalf));
+                hipScore = base * 0.55;
+              }
+            }
+
+            const bandRange = parseNumericRange(size.band_size);
+            const useBandScore = bandRange && hasHipBandAndCup && !isNaN(userBand);
+            if (useBandScore) {
+              [bandMin, bandMax] = bandRange;
+              const bandHalf = ((bandMax - bandMin) || 1) / 2;
+              const bandCenter = (bandMin + bandMax) / 2;
+              const bandInside = userBand >= bandMin && userBand <= bandMax;
+
+              if (bandInside) {
+                const base = Math.max(0, 1 - (Math.abs(userBand - bandCenter) / bandHalf));
+                bandScore = 0.7 + (0.3 * base);
+              } else if (userBand > bandMax) {
+                const excess = userBand - bandMax;
+                const range = bandMax - bandMin;
+                const excessRatio = excess / (range || 1);
+                bandScore = Math.max(0, 0.18 - (excessRatio * 0.18));
+              } else {
+                const base = Math.max(0, 1 - (Math.abs(userBand - bandCenter) / bandHalf));
+                bandScore = base * 0.55;
+              }
+            }
+
+            const cupRange = parseCupRange(size.cup_size);
+            if (cupRange && userCupIndex !== null) {
+              const [cupMin, cupMax] = cupRange;
+              if (userCupIndex >= cupMin && userCupIndex <= cupMax) {
+                cupScore = 1;
+              } else {
+                const distance = userCupIndex < cupMin ? (cupMin - userCupIndex) : (userCupIndex - cupMax);
+                cupScore = Math.max(0, 1 - (distance / 2));
+              }
+            }
+
+            const hipExceedsMax = !isNaN(hipMax) && userHip > hipMax;
+            const bandExceedsMax = useBandScore && !isNaN(bandMax) && userBand > bandMax;
+            const nearUpperHip = !isNaN(hipMin) && !isNaN(hipMax) && userHip >= (hipMin + (0.75 * (hipMax - hipMin)));
+            const nearUpperBand = useBandScore && !isNaN(bandMin) && !isNaN(bandMax) && userBand >= (bandMin + (0.75 * (bandMax - bandMin)));
+            const nearUpperCup = cupRange && userCupIndex !== null && userCupIndex >= (cupRange[0] + (0.75 * (cupRange[1] - cupRange[0])));
+            const matchScore = useBandScore
+              ? ((hipExceedsMax || bandExceedsMax)
+                  ? 0
+                  : Math.min(1, (0.5 * hipScore) + (0.3 * bandScore) + (0.2 * cupScore) + (nearUpperHip ? 0.06 : 0) + (nearUpperBand ? 0.05 : 0) + (nearUpperCup ? 0.03 : 0)))
+              : (hipExceedsMax
+                  ? 0
+                  : Math.min(1, (0.65 * hipScore) + (0.35 * cupScore) + (nearUpperHip ? 0.08 : 0) + (nearUpperCup ? 0.04 : 0)));
+
+            candidates.push({
+              name: sizeName,
+              score: matchScore,
+              nearUpperHip,
+              nearUpperBand,
+              nearUpperCup,
+              hipExceedsMax,
+              bandExceedsMax
+            });
+          });
+
+          if (candidates.length) {
+            candidates.sort((a, b) => b.score - a.score || order.indexOf(a.name) - order.indexOf(b.name));
+            const topScore = candidates[0].score;
+            const close = candidates.filter((candidate) => candidate.score >= topScore - 0.03);
+            const withUpper = close.filter((candidate) => candidate.nearUpperHip || candidate.nearUpperBand || candidate.nearUpperCup);
+            const pickFrom = withUpper.length ? withUpper : close;
+            pickFrom.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+            const chosen = pickFrom[pickFrom.length - 1];
+            bestSize = chosen.name;
+            bestScore = chosen.score;
           }
         } else {
           // Regular size calculation for other products
@@ -1251,7 +2037,7 @@
           };
           const u = toIndex(userMeasurements.cup_size);
           if (u !== null) {
-            const order = ['XS','S','M','L','XL','XXL'];
+            const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
             const candidates = [];
             chart.sizes.forEach(size => {
               const r = parseRange(size.cup_size);
@@ -1323,7 +2109,7 @@
           if (bestSizes.length > 0) {
             // Sort by size order
             bestSizes.sort((a, b) => {
-              const order = ['XS','S','M','L','XL','XXL'];
+              const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
               return order.indexOf(a) - order.indexOf(b);
             });
             // Pick the middle size if multiple ties (conservative fit)
@@ -1345,12 +2131,13 @@
         if (bestSize) {
           console.log(`Selected ${bestSize} with score ${bestScore.toFixed(2)}`);
           
-          // Create animation container with enhanced styling and animations
+          // Create animation container with enhanced styling, animations, and add-to-cart button
           resultDiv.innerHTML = 
             '<div class="size-buddy-result-container" style="margin:25px auto;padding:25px;background-color:#f1f9f1;border-radius:10px;text-align:center;max-width:400px;box-shadow:0 3px 10px rgba(0,0,0,0.08);border-left:4px solid #4caf50;opacity:0;transform:translateY(20px);">' +
               '<div class="size-buddy-title" style="font-size:18px;color:#333;margin-bottom:15px;opacity:0;transform:translateY(10px);">Your Recommended Size</div>' +
               '<div class="size-buddy-size" style="font-size:42px;font-weight:700;color:#4caf50;margin:20px 0;opacity:0;transform:scale(0.9);">' + bestSize + '</div>' +
-              '<p class="size-buddy-message" style="color:#666;margin:15px 0 0;opacity:0;transform:translateY(10px);">Based on your measurements, we recommend size ' + bestSize + '.</p>' +
+              '<p class="size-buddy-message" style="color:#666;margin:15px 0 20px;opacity:0;transform:translateY(10px);">Based on your measurements, we recommend size ' + bestSize + '.</p>' +
+              getRecommendedSizeCtaMarkup(bestSize) +
             '</div>';
             
             // Add enhanced animation styles
@@ -1398,6 +2185,13 @@
             // Highlight the recommended size in the chart
             highlightSizeInChart(bestSize);
             
+            // Attach add-to-cart handler
+            const atcBtn = document.getElementById('size-buddy-add-to-cart');
+            if (atcBtn) {
+              atcBtn.addEventListener('click', () => addRecommendedSizeToCart(bestSize, atcBtn));
+            }
+            requestAnimationFrame(() => scrollRecommendedCardIntoView());
+            
             // --- ALWAYS log recommendation for all product types ---
             if (!window.sizeBuddyRecommendationLogged[productId]) {
               window.sizeBuddyRecommendationLogged[productId] = true;
@@ -1431,8 +2225,7 @@
           rowToHighlight.style.backgroundColor = '#e8f5e9';
           rowToHighlight.style.fontWeight = 'bold';
           
-          // Scroll to the row if it's out of view
-          rowToHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Keep the recommendation card visible at the top of the modal instead of auto-scrolling down to the table row.
         }
       } catch (error) {
         console.error('Error highlighting size in chart:', error);
@@ -1562,11 +2355,15 @@
         const initialValue = Math.round((min + max) / 2);
         const initialPercent = 50; // Start in middle position
         
+        const sbWidgetEl = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
+        const sbTrackColor = (sbWidgetEl && sbWidgetEl.getAttribute('data-slider-track-color')) || '#d8d8d8';
+        const sbFillColor = (sbWidgetEl && sbWidgetEl.getAttribute('data-slider-fill-color')) || '#4A90E2';
+        
         const sliderHtml = `
           <div class="size-slider-container" data-measurement="height" style="margin-bottom:25px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
               <span style="font-weight:500;color:#333;font-size:15px;">Height</span>
-              <div class="slider-value" id="size-buddy-value-height" data-value="${initialValue}" style="color:#4A90E2;font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">
+              <div class="slider-value" id="size-buddy-value-height" data-value="${initialValue}" style="color:${sbFillColor};font-weight:600;background-color:#f1f8fe;padding:4px 8px;border-radius:4px;min-width:40px;text-align:center;">
                 ${formatHeightValue(initialValue)}
               </div>
             </div>
@@ -1575,11 +2372,11 @@
                  data-max="${max}"
                  data-height-values='${JSON.stringify(heightValues)}'
                  style="position:relative;height:40px;width:100%;touch-action:none;overflow:visible;">
-              <div class="slider-track"></div>
-              <div class="slider-filled" style="width:${initialPercent}%"></div>
-              <div class="slider-handle" style="left:${initialPercent}%"></div>
-              <div class="slider-ticks">
-                ${heightValues.map(() => '<div class="tick"></div>').join('')}
+              <div class="slider-track" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;background-color:${sbTrackColor};border-radius:4px;z-index:0;"></div>
+              <div class="slider-filled" style="position:absolute;top:50%;left:0;transform:translateY(-50%);height:8px;width:${initialPercent}%;background-color:${sbFillColor};border-radius:4px;z-index:1;"></div>
+              <div class="slider-handle" style="position:absolute;top:50%;left:${initialPercent}%;transform:translate(-50%,-50%);width:24px;height:24px;background-color:#fff;border:2px solid ${sbFillColor};border-radius:50%;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;"></div>
+              <div class="slider-ticks" style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);width:100%;height:8px;display:flex;justify-content:space-between;pointer-events:none;z-index:0;">
+                ${heightValues.map(() => '<div class="tick" style="width:2px;height:10px;background-color:#ccc;border-radius:1px;"></div>').join('')}
               </div>
             </div>
             <div class="slider-labels" style="display:flex;justify-content:space-between;margin-top:5px;">
@@ -1682,10 +2479,10 @@
   async function logSizeRecommendation(chartId, recommendedSize, measurements, shopDomain, productId) {
     try {
       console.log('logSizeRecommendation called with:', { chartId, recommendedSize, measurements, shopDomain, productId });
-      // Use direct backend URL first
-      const backendUrls = [
-        (window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com')
-      ];
+      const w = document.getElementById('size-buddy-widget') || document.querySelector('[data-shop-domain]');
+      const backendBase = (w && w.getAttribute('data-backend-url')) || window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
+      const backendUrl = (backendBase || '').replace(/\/$/, '');
+      const backendUrls = [backendUrl];
       let logSuccess = false;
       for (const backendUrl of backendUrls) {
         try {

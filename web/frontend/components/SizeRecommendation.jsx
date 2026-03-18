@@ -85,6 +85,62 @@ function calculateScoreRange(height, weight, fitType) {
   return `${Math.round(adjustedMinScore)}-${Math.round(adjustedMaxScore)}`;
 }
 
+const DEFAULT_SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+
+function normalizeChartSizes(sizes = []) {
+  if (!Array.isArray(sizes)) return [];
+
+  return sizes.map((size) => ({
+    ...size,
+    name: size.name || size.size,
+    size: size.size || size.name,
+    enabled: size.enabled !== false,
+  }));
+}
+
+function mergeChartSizesWithDefaults(category, fitType, sizes = []) {
+  const normalizedSizes = normalizeChartSizes(sizes);
+  const defaultChart = defaultSizeCharts?.[category]?.[fitType];
+
+  if (!defaultChart?.sizes?.length) {
+    return normalizedSizes;
+  }
+
+  const sizeMap = new Map();
+
+  normalizeChartSizes(defaultChart.sizes).forEach((defaultSize) => {
+    const sizeKey = defaultSize.size || defaultSize.name;
+    sizeMap.set(sizeKey, { ...defaultSize });
+  });
+
+  normalizedSizes.forEach((size) => {
+    const sizeKey = size.size || size.name;
+    const defaultSize = sizeMap.get(sizeKey) || {};
+
+    sizeMap.set(sizeKey, {
+      ...defaultSize,
+      ...size,
+      name: size.name || size.size || defaultSize.name || defaultSize.size,
+      size: size.size || size.name || defaultSize.size || defaultSize.name,
+      enabled: size.enabled !== false,
+    });
+  });
+
+  const mergedSizes = Array.from(sizeMap.values());
+
+  return mergedSizes.sort((a, b) => {
+    const aSize = a.size || a.name;
+    const bSize = b.size || b.name;
+    const aIndex = DEFAULT_SIZE_ORDER.indexOf(aSize);
+    const bIndex = DEFAULT_SIZE_ORDER.indexOf(bSize);
+
+    if (aIndex === -1 && bIndex === -1) return String(aSize).localeCompare(String(bSize));
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
+}
+
 export function SizeRecommendation({ shop, host }) {
   const navigate = useNavigate();
   const app = useAppBridge();
@@ -103,8 +159,35 @@ export function SizeRecommendation({ shop, host }) {
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [isResourcePickerOpen, setIsResourcePickerOpen] = useState(false);
   const isMounted = useRef(true);
+  const customChartImageInputRef = useRef(null);
   const [editingRecommendationId, setEditingRecommendationId] = useState(null);
   const [limitBanner, setLimitBanner] = useState(false);
+  const [customSizeChartImage, setCustomSizeChartImage] = useState('');
+  const [customSizeChartImageName, setCustomSizeChartImageName] = useState('');
+
+  const fullShopDomain = useMemo(() => {
+    if (!shop) return '';
+    return shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
+  }, [shop]);
+
+  const isRecommendationLocked = useCallback((recommendation) => {
+    const lockedValue = recommendation?.locked;
+    return Boolean(lockedValue && lockedValue !== 0 && lockedValue !== '0' && lockedValue !== false);
+  }, []);
+
+  const lockedRecommendations = useMemo(
+    () => sizeRecommendations.filter((recommendation) => isRecommendationLocked(recommendation)),
+    [isRecommendationLocked, sizeRecommendations]
+  );
+
+  const navigateToPlans = useCallback(() => {
+    if (!fullShopDomain || !host) {
+      navigate('/plans');
+      return;
+    }
+
+    navigate(`/plans?shop=${encodeURIComponent(fullShopDomain)}&host=${encodeURIComponent(host)}`);
+  }, [fullShopDomain, host, navigate]);
 
   // Add custom styles for the modal
   useEffect(() => {
@@ -143,13 +226,72 @@ export function SizeRecommendation({ shop, host }) {
     };
   }, []);
 
+  const resetCustomSizeChartImage = useCallback(() => {
+    setCustomSizeChartImage('');
+    setCustomSizeChartImageName('');
+    if (customChartImageInputRef.current) {
+      customChartImageInputRef.current.value = '';
+    }
+  }, []);
+
+  const handleCustomSizeChartImageUpload = useCallback((event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setToastProps({
+        content: 'Please upload an image file.',
+        error: true
+      });
+      setShowToast(true);
+      if (customChartImageInputRef.current) {
+        customChartImageInputRef.current.value = '';
+      }
+      return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+      setToastProps({
+        content: 'Please upload an image smaller than 4MB.',
+        error: true
+      });
+      setShowToast(true);
+      if (customChartImageInputRef.current) {
+        customChartImageInputRef.current.value = '';
+      }
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        setToastProps({
+          content: 'Could not read that image. Please try another file.',
+          error: true
+        });
+        setShowToast(true);
+        return;
+      }
+
+      setCustomSizeChartImage(reader.result);
+      setCustomSizeChartImageName(file.name);
+    };
+    reader.onerror = () => {
+      setToastProps({
+        content: 'Could not read that image. Please try again.',
+        error: true
+      });
+      setShowToast(true);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   // Fetch existing size charts
   const fetchSizeRecommendations = useCallback(async () => {
+    if (!fullShopDomain) return;
+
     setIsLoading(true);
     try {
-      // Ensure shop parameter has full domain
-      const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
-      
       console.log(`Fetching size recommendations for shop: ${fullShopDomain}`);
       
       // Include shop parameter in URL
@@ -185,7 +327,7 @@ export function SizeRecommendation({ shop, host }) {
     } finally {
       if (isMounted.current) setIsLoading(false);
     }
-  }, [fetch, shop]);
+  }, [fetch, fullShopDomain]);
 
   useEffect(() => {
     fetchSizeRecommendations();
@@ -204,6 +346,7 @@ export function SizeRecommendation({ shop, host }) {
     setChartName('');
     setSelectedProducts([]);
     setCurrentSizeRecommendation(null);
+    resetCustomSizeChartImage();
     console.log('Modal state reset');
   };
 
@@ -217,6 +360,7 @@ export function SizeRecommendation({ shop, host }) {
     setChartName('');
     setSelectedProducts([]);
     setCurrentSizeRecommendation(null);
+    resetCustomSizeChartImage();
     console.log('Modal state reset');
   };
 
@@ -332,7 +476,7 @@ export function SizeRecommendation({ shop, host }) {
       // Ensure the measurements are in the correct format
       const formattedChart = {
         ...defaultChart,
-        sizes: defaultChart.sizes.map(size => {
+        sizes: normalizeChartSizes(defaultChart.sizes).map(size => {
           const formattedSize = { ...size };
           
           // Only process properties that exist
@@ -350,6 +494,10 @@ export function SizeRecommendation({ shop, host }) {
           
           if (size.hip) {
             formattedSize.hip = size.hip.includes('-') ? size.hip : `${size.hip}-${size.hip}`;
+          }
+
+          if (size.band_size) {
+            formattedSize.band_size = size.band_size.includes('-') ? size.band_size : `${size.band_size}-${size.band_size}`;
           }
           
           if (size.dress_size) {
@@ -398,9 +546,20 @@ export function SizeRecommendation({ shop, host }) {
 
   const handleEdit = async (chart) => {
     console.log('Editing chart:', chart);
+
+    if (isRecommendationLocked(chart)) {
+      setToastProps({
+        content: 'This size recommendation is locked on your current plan. Upgrade to edit it again.',
+        error: true
+      });
+      setShowToast(true);
+      return;
+    }
     
     setEditingRecommendationId(chart.id);
     setChartName(chart.name);
+    setCustomSizeChartImage(chart.custom_size_chart_image || '');
+    setCustomSizeChartImageName(chart.custom_size_chart_image ? 'Current uploaded image' : '');
     // Map DB categories to UI labels
     const uiCategory = chart.category === 'bikinis' ? 'Bikini Tops / Bras' : chart.category;
     setSelectedCategory(uiCategory);
@@ -429,6 +588,7 @@ export function SizeRecommendation({ shop, host }) {
       if (!parsedChartData.optional_measurements) {
         parsedChartData.optional_measurements = {};
       }
+      parsedChartData.sizes = mergeChartSizesWithDefaults(uiCategory, chart.fit_type, parsedChartData.sizes);
       setCurrentSizeRecommendation(parsedChartData);
     } catch (error) {
       console.error('Error processing chart data:', error);
@@ -510,6 +670,19 @@ export function SizeRecommendation({ shop, host }) {
 
       // Deep clone the current size recommendation to avoid reference issues
       const processedSizeRecommendation = JSON.parse(JSON.stringify(currentSizeRecommendation));
+
+      const enabledSizeCount = Array.isArray(processedSizeRecommendation?.sizes)
+        ? processedSizeRecommendation.sizes.filter((size) => size.enabled !== false).length
+        : 0;
+
+      if (enabledSizeCount === 0) {
+        setToastProps({
+          content: 'Please keep at least one size enabled.',
+          error: true
+        });
+        setShowToast(true);
+        return;
+      }
       
       // Ensure all cup_size values are properly formatted as strings
       if (processedSizeRecommendation && processedSizeRecommendation.sizes) {
@@ -566,15 +739,13 @@ export function SizeRecommendation({ shop, host }) {
         });
       }
 
-      // Ensure full shop domain is used
-      const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
-
       const requestData = {
         shop: fullShopDomain,
         chart_name: chartName,
         // Map display category to DB-safe value
         category: selectedCategory === 'Bikini Tops / Bras' ? 'bikinis' : selectedCategory,
         fit_type: selectedFitType,
+        custom_size_chart_image: customSizeChartImage || null,
         chart_data: processedSizeRecommendation, // Use the processed data
         products: selectedProducts.map(product => ({
           id: product.id,
@@ -585,7 +756,10 @@ export function SizeRecommendation({ shop, host }) {
       };
 
       // Log the data being sent
-      console.log('Sending data:', JSON.stringify(requestData, null, 2));
+      console.log('Sending data:', {
+        ...requestData,
+        custom_size_chart_image: requestData.custom_size_chart_image ? '[uploaded image]' : null
+      });
 
       const url = editingRecommendationId 
         ? `/api/size-recommendations/${editingRecommendationId}?shop=${fullShopDomain}` 
@@ -623,10 +797,17 @@ export function SizeRecommendation({ shop, host }) {
         error: false
       });
       setShowToast(true);
+      setLimitBanner(false);
       handleModalClose();
       fetchSizeRecommendations();
     } catch (error) {
       console.error('Error saving size recommendation:', error);
+
+      if (error.message.includes('Plan limit reached') || error.message.includes('locked on your current plan')) {
+        await fetchSizeRecommendations();
+        setLimitBanner(true);
+      }
+
       setToastProps({
         content: `Error saving size recommendation: ${error.message}`,
         error: true
@@ -637,9 +818,6 @@ export function SizeRecommendation({ shop, host }) {
 
   const handleDelete = async (chartId) => {
     try {
-      // Ensure full shop domain is used
-      const fullShopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
-      
       const response = await fetch(`/api/size-recommendations/${chartId}?shop=${fullShopDomain}`, {
         method: 'DELETE',
         headers: {
@@ -657,6 +835,7 @@ export function SizeRecommendation({ shop, host }) {
         error: false
       });
       setShowToast(true);
+      setLimitBanner(false);
       fetchSizeRecommendations();
     } catch (error) {
       console.error('Error deleting size recommendation:', error);
@@ -668,46 +847,69 @@ export function SizeRecommendation({ shop, host }) {
     }
   };
 
-  const renderCategorySelection = () => (
-    <Grid>
-      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-        <Card sectioned>
-          <Button fullWidth onClick={() => handleCategorySelect('tops')}>
-            <Box padding="4" alignment="center">
-              <Text variant="headingMd" as="h3">Tops</Text>
-            </Box>
-          </Button>
-        </Card>
-      </Grid.Cell>
-      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-        <Card sectioned>
-          <Button fullWidth onClick={() => handleCategorySelect('bottoms')}>
-            <Box padding="4" alignment="center">
-              <Text variant="headingMd" as="h3">Bottoms</Text>
-            </Box>
-          </Button>
-        </Card>
-      </Grid.Cell>
-      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-        <Card sectioned>
-          <Button fullWidth onClick={() => handleCategorySelect('dresses')}>
-            <Box padding="4" alignment="center">
-              <Text variant="headingMd" as="h3">Dresses</Text>
-            </Box>
-          </Button>
-        </Card>
-      </Grid.Cell>
-      <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3 }}>
-        <Card sectioned>
-          <Button fullWidth onClick={() => handleCategorySelect('Bikini Tops / Bras')}>
-            <Box padding="4" alignment="center">
-              <Text variant="headingMd" as="h3">Bikini Tops / Bras</Text>
-            </Box>
-          </Button>
-        </Card>
-      </Grid.Cell>
-    </Grid>
-  );
+  const renderCategorySelection = () => {
+    const categoryOptions = [
+      {
+        value: 'tops',
+        title: 'Tops',
+        subtitle: 'Height and weight',
+      },
+      {
+        value: 'bottoms',
+        title: 'Bottoms',
+        subtitle: 'Waist and hips',
+      },
+      {
+        value: 'dresses',
+        title: 'Dresses',
+        subtitle: 'Dress size',
+      },
+      {
+        value: 'Bikini Tops / Bras',
+        title: 'Bikini Tops / Bras',
+        subtitle: 'Band size and cup size',
+      },
+      {
+        value: 'onepieces',
+        title: 'One Pieces',
+        subtitle: 'Hips and cup size',
+      },
+    ];
+
+    return (
+      <div>
+        <div style={{ marginBottom: '20px' }}>
+          <Text variant="headingMd" as="h3">
+            Choose a product category
+          </Text>
+          <Box paddingBlockStart="1">
+            <Text variant="bodyMd" as="p" color="subdued">
+              Start by picking the type of product you want to build a size recommendation for.
+            </Text>
+          </Box>
+        </div>
+
+        <div className="SizeBuddy-CategoryGrid">
+          {categoryOptions.map((category) => (
+            <button
+              key={category.value}
+              type="button"
+              className="SizeBuddy-CategoryCard"
+              onClick={() => handleCategorySelect(category.value)}
+            >
+              <div className="SizeBuddy-CategoryCard__Accent" />
+              <Text variant="headingMd" as="h3">
+                {category.title}
+              </Text>
+              <Text variant="bodySm" as="p" color="subdued">
+                {category.subtitle}
+              </Text>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   const renderFitTypeSelection = () => (
     <>
@@ -790,6 +992,16 @@ export function SizeRecommendation({ shop, host }) {
         })
       };
       console.log('Updating measurement:', { field, value, updatedSizeRecommendation });
+      setCurrentSizeRecommendation(updatedSizeRecommendation);
+    };
+
+    const handleSizeEnabledToggle = (sizeIndex, enabled) => {
+      const updatedSizeRecommendation = {
+        ...currentSizeRecommendation,
+        sizes: currentSizeRecommendation.sizes.map((size, index) => (
+          index === sizeIndex ? { ...size, enabled } : size
+        ))
+      };
       setCurrentSizeRecommendation(updatedSizeRecommendation);
     };
 
@@ -1139,6 +1351,7 @@ export function SizeRecommendation({ shop, host }) {
 
     const rows = currentSizeRecommendation.sizes.map((size, sizeIndex) => {
       let measurementRows = [];
+      const enabled = size.enabled !== false;
       
       if (selectedCategory === 'tops') {
         measurementRows = [
@@ -1181,10 +1394,27 @@ export function SizeRecommendation({ shop, host }) {
             </Box>
           ]
         ];
+      } else if (selectedCategory === 'onepieces') {
+        measurementRows = [
+          [
+            <Box key={`hip-${sizeIndex}`} width="50%" paddingInlineEnd="2">
+              {renderMeasurementSlider(sizeIndex, 'hip', size.hip, 'Hip (in)', 32, 56)}
+            </Box>,
+            <Box key={`band-size-${sizeIndex}`} width="50%" paddingInlineStart="2">
+              {renderMeasurementSlider(sizeIndex, 'band_size', size.band_size, 'Band Size (in)', 26, 46)}
+            </Box>
+          ],
+          [
+            <Box key={`cup-size-${sizeIndex}`} width="100%">
+              {renderMeasurementSlider(sizeIndex, 'cup_size', size.cup_size, 'Cup Size', 0, 8, 1)}
+            </Box>
+          ]
+        ];
       }
       
       return {
-        size: size.size,
+        size: size.size || size.name,
+        enabled,
         measurements: measurementRows
       };
     });
@@ -1198,6 +1428,77 @@ export function SizeRecommendation({ shop, host }) {
           onChange={setChartName}
           autoComplete="off"
         />
+        <Box paddingBlockStart="4">
+          <LegacyCard>
+            <LegacyCard.Section>
+              <LegacyStack vertical spacing="3">
+                <div>
+                  <Text variant="headingMd" as="h3">Custom Size Chart Image</Text>
+                  <Box paddingBlockStart="1">
+                    <Text variant="bodyMd" as="p" color="subdued">
+                      Optional. Upload an image to show in the storefront modal instead of the default size chart table. If you leave this empty, nothing changes and the default table will still be shown.
+                    </Text>
+                  </Box>
+                </div>
+
+                <input
+                  ref={customChartImageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={handleCustomSizeChartImageUpload}
+                  style={{ display: 'none' }}
+                />
+
+                <LegacyStack spacing="3">
+                  <Button onClick={() => customChartImageInputRef.current?.click()}>
+                    {customSizeChartImage ? 'Replace Image' : 'Upload Image'}
+                  </Button>
+                  {customSizeChartImage && (
+                    <Button destructive onClick={resetCustomSizeChartImage}>
+                      Remove Image
+                    </Button>
+                  )}
+                </LegacyStack>
+
+                {customSizeChartImage ? (
+                  <div style={{
+                    border: '1px solid #dfe3e8',
+                    borderRadius: '12px',
+                    padding: '12px',
+                    background: '#ffffff'
+                  }}>
+                    <img
+                      src={customSizeChartImage}
+                      alt="Custom size chart preview"
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        maxWidth: '100%',
+                        height: 'auto',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Box paddingBlockStart="2">
+                      <Text variant="bodySm" as="p" color="subdued">
+                        {customSizeChartImageName || 'Custom image uploaded'}
+                      </Text>
+                    </Box>
+                  </div>
+                ) : (
+                  <Box
+                    padding="4"
+                    background="bg-surface-secondary"
+                    borderRadius="2"
+                  >
+                    <Text variant="bodyMd" as="p" color="subdued">
+                      No custom image uploaded. The default size chart table will be shown to customers.
+                    </Text>
+                  </Box>
+                )}
+              </LegacyStack>
+            </LegacyCard.Section>
+          </LegacyCard>
+        </Box>
         <Box padding="4" style={{ overflowX: 'visible', width: '100%' }}>
           <div style={{ width: '100%', margin: '0 auto' }}>
             <LegacyCard>
@@ -1207,33 +1508,70 @@ export function SizeRecommendation({ shop, host }) {
                 </Text>
                 <Box paddingBlockStart="4">
                   {/* Custom layout instead of DataTable */}
-                  {rows.map((sizeData, sizeIndex) => (
-                    <div key={`size-section-${sizeIndex}`} style={{
-                      border: '2px solid #5c6ac4', // Shopify blue border
-                      borderRadius: '8px',
-                      padding: '10px',
-                      marginBottom: '16px',
-                      boxShadow: '0px 1px 6px rgba(0, 0, 0, 0.05)'
-                    }}>
-                      {/* Size label as a header - more compact */}
-                      <Box padding="2" background="bg-surface" borderRadius="2" 
-                           style={{ marginBottom: '10px', textAlign: 'center', borderBottom: '1px solid #e1e3e5' }}>
-                        <Text variant="headingMd" as="h3" fontWeight="bold">
-                          {sizeData.size}
-                        </Text>
-                      </Box>
-                      
-                      {/* Measurement sliders - reduced spacing */}
-                      <div style={{ marginBottom: '4px', width: '100%' }}>
-                        {sizeData.measurements.map((measurementRow, rowIndex) => (
-                          <div key={`measurement-row-${sizeIndex}-${rowIndex}`} 
-                               style={{ width: '100%', marginBottom: '10px', display: 'flex' }}>
-                            {measurementRow}
+                  {rows.map((sizeData, sizeIndex) => {
+                    const includeToggleId = `include-size-${sizeIndex}`;
+
+                    return (
+                      <div key={`size-section-${sizeIndex}`} style={{
+                        border: sizeData.enabled ? '2px solid #5c6ac4' : '1px solid #d8dee4',
+                        borderRadius: '12px',
+                        padding: '12px',
+                        marginBottom: '16px',
+                        boxShadow: '0px 1px 6px rgba(0, 0, 0, 0.05)',
+                        background: sizeData.enabled ? '#ffffff' : '#f6f6f7',
+                        opacity: sizeData.enabled ? 1 : 0.8
+                      }}>
+                        <Box padding="2" background="bg-surface" borderRadius="2"
+                             style={{ marginBottom: '10px', borderBottom: '1px solid #e1e3e5' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                            <Text variant="headingMd" as="h3" fontWeight="bold">
+                              {sizeData.size}
+                            </Text>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <Text as="span" variant="bodySm" color="subdued">
+                                Include size
+                              </Text>
+                              <div className="Polaris-Toggle">
+                                <input
+                                  type="checkbox"
+                                  id={includeToggleId}
+                                  className="Polaris-Toggle__Input"
+                                  checked={sizeData.enabled}
+                                  onChange={(event) => handleSizeEnabledToggle(sizeIndex, event.target.checked)}
+                                />
+                                <label className="Polaris-Toggle__Label" htmlFor={includeToggleId}>
+                                  <span className="Polaris-Toggle__Track">
+                                    <span className="Polaris-Toggle__Icon"></span>
+                                  </span>
+                                </label>
+                              </div>
+                            </div>
                           </div>
-                        ))}
+                        </Box>
+
+                        {sizeData.enabled ? (
+                          <div style={{ marginBottom: '4px', width: '100%' }}>
+                            {sizeData.measurements.map((measurementRow, rowIndex) => (
+                              <div key={`measurement-row-${sizeIndex}-${rowIndex}`}
+                                   style={{ width: '100%', marginBottom: '10px', display: 'flex' }}>
+                                {measurementRow}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <Box
+                            padding="4"
+                            background="bg-surface-secondary"
+                            borderRadius="2"
+                          >
+                            <Text variant="bodyMd" as="p" color="subdued">
+                              This size will be hidden from shoppers and excluded from recommendations until you turn it back on.
+                            </Text>
+                          </Box>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </Box>
               </Box>
             </LegacyCard>
@@ -1473,12 +1811,33 @@ export function SizeRecommendation({ shop, host }) {
           </Box>
           <LegacyCard>
             <Box padding="4">
+              {(lockedRecommendations.length > 0 || limitBanner) && (
+                <Box paddingBlockEnd="4">
+                  <Banner
+                    status={lockedRecommendations.length > 0 ? 'warning' : 'critical'}
+                    title={lockedRecommendations.length > 0
+                      ? `${lockedRecommendations.length} size recommendation${lockedRecommendations.length === 1 ? '' : 's'} locked on your current plan`
+                      : 'Plan limit reached'}
+                    action={{
+                      content: 'Upgrade plan',
+                      onAction: navigateToPlans
+                    }}
+                  >
+                    <p>
+                      {lockedRecommendations.length > 0
+                        ? 'Locked size recommendations stay unavailable on your current plan and will automatically unlock if you upgrade again.'
+                        : 'Your current plan has reached its active size recommendation limit. Upgrade to add or unlock more size recommendations.'}
+                    </p>
+                  </Banner>
+                </Box>
+              )}
+
               {sizeRecommendations.length === 0 ? (
                 <EmptyState
                   heading="Create your first size recommendation"
                   action={{
                     content: 'Create Size Recommendation',
-                    onAction: () => setIsModalOpen(true)
+                    onAction: handleModalOpen
                   }}
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
@@ -1489,34 +1848,58 @@ export function SizeRecommendation({ shop, host }) {
                   <Box paddingBlockEnd="4">
                     <LegacyStack distribution="equalSpacing" alignment="center">
                       <Text variant="headingMd" as="h3">Your Size Recommendations</Text>
-                      <Button primary onClick={() => setIsModalOpen(true)}>
+                      <Button primary onClick={handleModalOpen}>
                         Create Size Recommendation
                       </Button>
                     </LegacyStack>
                   </Box>
                   <ResourceList
                     items={sizeRecommendations}
-                    renderItem={(item) => (
-                      <ResourceItem id={item.id}>
-                        <LegacyStack distribution="equalSpacing" alignment="center">
-                          <LegacyStack vertical>
-                            <Text variant="bodyMd" as="h3" fontWeight="bold">
-                              {item.name}
-                            </Text>
-                            <LegacyStack>
-                              <Badge status="info">{item.category}</Badge>
-                              <Badge status="success">
-                                {item.fit_type === 'slim' ? 'Small Fit' : item.fit_type === 'regular' ? 'Standard Fit' : item.fit_type === 'loose' ? 'Large Fit' : item.fit_type + ' Fit'}
-                              </Badge>
+                    renderItem={(item) => {
+                      const itemLocked = isRecommendationLocked(item);
+                      const categoryLabel = item.category === 'bikinis'
+                        ? 'Bikini Tops / Bras'
+                        : item.category === 'onepieces'
+                          ? 'One Pieces'
+                          : item.category;
+
+                      return (
+                        <ResourceItem id={item.id}>
+                          <div style={{
+                            opacity: itemLocked ? 0.58 : 1,
+                            filter: itemLocked ? 'grayscale(0.2)' : 'none',
+                            transition: 'opacity 120ms ease'
+                          }}>
+                            <LegacyStack distribution="equalSpacing" alignment="center">
+                              <LegacyStack vertical>
+                                <Text variant="bodyMd" as="h3" fontWeight="bold">
+                                  {item.name}
+                                </Text>
+                                <LegacyStack>
+                                  <Badge status="info">{categoryLabel}</Badge>
+                                  <Badge status="success">
+                                    {item.fit_type === 'slim' ? 'Small Fit' : item.fit_type === 'regular' ? 'Standard Fit' : item.fit_type === 'loose' ? 'Large Fit' : item.fit_type + ' Fit'}
+                                  </Badge>
+                                  {itemLocked && <Badge status="attention">Locked</Badge>}
+                                </LegacyStack>
+                                {itemLocked && (
+                                  <Text variant="bodySm" as="p" color="subdued">
+                                    Locked on your current plan. Upgrade to edit or use this size recommendation again.
+                                  </Text>
+                                )}
+                              </LegacyStack>
+                              <ButtonGroup>
+                                {itemLocked && (
+                                  <Button onClick={navigateToPlans}>Upgrade to unlock</Button>
+                                )}
+                                <Button onClick={() => handleEdit(item)} disabled={itemLocked}>Edit</Button>
+                                <Button destructive onClick={() => handleDelete(item.id)}>Delete</Button>
+                              </ButtonGroup>
                             </LegacyStack>
-                          </LegacyStack>
-                          <ButtonGroup>
-                            <Button onClick={() => handleEdit(item)}>Edit</Button>
-                            <Button destructive onClick={() => handleDelete(item.id)}>Delete</Button>
-                          </ButtonGroup>
-                        </LegacyStack>
-                      </ResourceItem>
-                    )}
+                          </div>
+                        </ResourceItem>
+                      );
+                    }}
                   />
                 </>
               )}
@@ -1571,7 +1954,7 @@ export function SizeRecommendation({ shop, host }) {
               <Box paddingBlockStart="3">
                 <LegacyStack vertical spacing="3">
                   <Text as="p" variant="bodyMd">
-                    1. Choose a category (Tops, Bottoms, Dresses, or Bikini Tops / Bras)
+                    1. Choose a category (Tops, Bottoms, Dresses, Bikini Tops / Bras, or One Pieces)
                   </Text>
                   <Text as="p" variant="bodyMd">
                     2. Name your size recommendation
@@ -1636,6 +2019,43 @@ export function SizeRecommendation({ shop, host }) {
         .Polaris-TextField {
           max-width: 100%;
           width: 100%;
+        }
+        .SizeBuddy-CategoryGrid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 16px;
+        }
+        .SizeBuddy-CategoryCard {
+          appearance: none;
+          border: 1px solid #d8dee4;
+          border-radius: 18px;
+          background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
+          padding: 18px 18px 16px;
+          min-height: 138px;
+          text-align: left;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-start;
+          gap: 10px;
+          cursor: pointer;
+          box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+          transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+        }
+        .SizeBuddy-CategoryCard:hover {
+          transform: translateY(-2px);
+          border-color: #008060;
+          box-shadow: 0 14px 28px rgba(0, 128, 96, 0.12);
+        }
+        .SizeBuddy-CategoryCard:focus-visible {
+          outline: 3px solid rgba(0, 128, 96, 0.22);
+          outline-offset: 2px;
+          border-color: #008060;
+        }
+        .SizeBuddy-CategoryCard__Accent {
+          width: 42px;
+          height: 6px;
+          border-radius: 999px;
+          background: linear-gradient(90deg, #008060 0%, #33a07d 100%);
         }
         .Polaris-LegacyStack {
           width: 100%;

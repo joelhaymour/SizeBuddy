@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import shopify, { validateAuthenticatedSession } from "../shopify.js";
-import { requireActiveSubscription } from './billing.js';
+import { syncPlanFromShopify } from './billing.js';
 import { getDb } from '../db.js';
 
 const router = Router();
@@ -29,50 +29,13 @@ router.get('/api/size-recommendations', async (req, res) => {
   }
 
   try {
-    // Reconcile locking based on current stored plan before returning the list
     const db = req.app.locals.db || await getDb();
-    const sub = await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]);
-    const plan = (sub?.plan || 'Free');
-    const planLimit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
-    
-    // Always reconcile: reset all locks to match current plan limit
-    const unlockedVal = process.env.DATABASE_URL ? 'FALSE' : '0';
-    
-    if (planLimit !== Infinity) {
-      // Reset all to unlocked, then lock oldest beyond limit
-      await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
-      
-      if (process.env.DATABASE_URL) {
-        await db.run(
-          `UPDATE size_charts SET locked = TRUE
-           WHERE shop_domain = ? AND id NOT IN (
-             SELECT id FROM size_charts
-             WHERE shop_domain = ?
-             ORDER BY created_at DESC, id DESC
-             LIMIT ?
-           )`,
-          [shop, shop, planLimit]
-        );
-      } else {
-        await db.run(
-          `UPDATE size_charts SET locked = 1
-           WHERE shop_domain = ? AND id NOT IN (
-             SELECT id FROM size_charts
-             WHERE shop_domain = ?
-             ORDER BY created_at DESC, id DESC
-             LIMIT ?
-           )`,
-          [shop, shop, planLimit]
-        );
-      }
-    } else {
-      // Premium: unlock all
-      await db.run(`UPDATE size_charts SET locked = ${unlockedVal} WHERE shop_domain = ?`, [shop]);
-    }
+    const plan = await syncActivePlanForShop(shop, db);
+    await reconcileChartLocks(db, shop, plan);
 
     res.set('Cache-Control', 'no-store');
     // Return all charts including locked ones; frontend can show locked status
-    const recommendations = await req.app.locals.db.all(
+    const recommendations = await db.all(
       `SELECT * FROM size_charts WHERE shop_domain = ? ORDER BY created_at DESC`,
       [shop]
     );
@@ -90,7 +53,7 @@ router.get('/api/size-recommendations', async (req, res) => {
           }
         }
         
-        const products = await req.app.locals.db.all(
+        const products = await db.all(
           `SELECT * FROM product_charts WHERE chart_id = ?`,
           [recommendation.id]
         );
@@ -118,14 +81,22 @@ router.get('/api/size-recommendations/:id', async (req, res) => {
   }
 
   try {
+    const db = req.app.locals.db || await getDb();
+    const plan = await syncActivePlanForShop(shop, db);
+    await reconcileChartLocks(db, shop, plan);
+
     res.set('Cache-Control', 'no-store');
-    const recommendation = await req.app.locals.db.get(
+    const recommendation = await db.get(
       `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ?`,
       [recommendationId, shop]
     );
 
     if (!recommendation) {
       return res.status(404).send({ error: "Size recommendation not found" });
+    }
+
+    if (isLockedValue(recommendation.locked)) {
+      return res.status(403).send({ error: "This size recommendation is locked on your current plan. Upgrade to edit it again." });
     }
 
     // Parse chart_data and optional_measurements from JSON strings to objects
@@ -153,7 +124,7 @@ router.get('/api/size-recommendations/:id', async (req, res) => {
     };
 
     // Get associated products
-    const products = await req.app.locals.db.all(
+    const products = await db.all(
       `SELECT * FROM product_charts WHERE chart_id = ?`,
       [recommendationId]
     );
@@ -179,6 +150,84 @@ function extractShopFromBearer(req) {
   } catch { return null; }
 }
 
+function getPlanLimit(plan) {
+  if (plan === 'Premium') return Infinity;
+  if (plan === 'Pro') return 5;
+  return 2;
+}
+
+function isLockedValue(value) {
+  if (process.env.DATABASE_URL) {
+    return value === true;
+  }
+
+  return value === 1 || value === '1' || value === true;
+}
+
+async function syncActivePlanForShop(shop, db) {
+  await db.run(
+    'INSERT INTO subscriptions (shop, plan, status, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(shop) DO NOTHING',
+    [shop, 'Free', 'active']
+  );
+
+  let plan = (await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]))?.plan || 'Free';
+
+  try {
+    const sessions = await shopify.sessionStorage.findSessionsByShop(shop);
+    const sessionForSync = (sessions || []).find((session) => session && session.accessToken) || null;
+
+    if (sessionForSync?.accessToken) {
+      const syncedPlan = await syncPlanFromShopify(shop, sessionForSync);
+      if (syncedPlan) {
+        plan = syncedPlan;
+      }
+    }
+  } catch (error) {
+    console.error(`Error syncing plan for ${shop}:`, error);
+  }
+
+  return plan;
+}
+
+async function reconcileChartLocks(db, shop, plan) {
+  const planLimit = getPlanLimit(plan);
+  const unlockedValue = process.env.DATABASE_URL ? 'FALSE' : '0';
+
+  if (planLimit === Infinity) {
+    await db.run(`UPDATE size_charts SET locked = ${unlockedValue} WHERE shop_domain = ?`, [shop]);
+    return planLimit;
+  }
+
+  // Keep the oldest charts active so the newest overflow charts lock first on downgrade.
+  await db.run(`UPDATE size_charts SET locked = ${unlockedValue} WHERE shop_domain = ?`, [shop]);
+
+  if (process.env.DATABASE_URL) {
+    await db.run(
+      `UPDATE size_charts SET locked = TRUE
+       WHERE shop_domain = ? AND id NOT IN (
+         SELECT id FROM size_charts
+         WHERE shop_domain = ?
+         ORDER BY created_at ASC, id ASC
+         LIMIT ?
+       )`,
+      [shop, shop, planLimit]
+    );
+  } else {
+    await db.run(
+      `UPDATE size_charts SET locked = 1
+       WHERE shop_domain = ? AND id NOT IN (
+         SELECT id FROM size_charts
+         WHERE shop_domain = ?
+         ORDER BY created_at ASC, id ASC
+         LIMIT ?
+       )`,
+      [shop, shop, planLimit]
+    );
+  }
+
+  return planLimit;
+}
+
 router.post('/api/size-recommendations', async (req, res) => {
   const {
     shop,
@@ -188,6 +237,7 @@ router.post('/api/size-recommendations', async (req, res) => {
     subcategory,
     fit_type,
     products,
+    custom_size_chart_image,
   } = req.body;
 
   const sessionShop = res.locals?.shopify?.session?.shop;
@@ -199,49 +249,31 @@ router.post('/api/size-recommendations', async (req, res) => {
   }
 
   try {
-    // Ensure subscription row exists (default Free)
     const db = req.app.locals.db || await getDb();
-    await db.run('INSERT INTO subscriptions (shop, plan, status, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(shop) DO NOTHING', [resolvedShop, 'Free', 'active']);
-    
-    // Get current plan from DB
-    let sub = await db.get('SELECT plan, updated_at FROM subscriptions WHERE shop = ?', [resolvedShop]);
-    let plan = (sub?.plan || 'Free');
-    
-    // Count only unlocked charts (use FALSE for Postgres, 0 for SQLite)
+    const plan = await syncActivePlanForShop(resolvedShop, db);
+    const limit = await reconcileChartLocks(db, resolvedShop, plan);
+
     const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
     const existingCountRow = await db.get(`SELECT COUNT(*) as cnt FROM size_charts WHERE shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`, [resolvedShop]);
     const cnt = existingCountRow?.cnt || 0;
-    let limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
-    
-    // If at limit, try syncing plan from Shopify before rejecting (in case webhook missed an upgrade)
-    if (cnt >= limit && plan !== 'Premium') {
-      // Load offline session for this shop to query Shopify API
-      let sessionForSync = res.locals?.shopify?.session;
-      if (!sessionForSync || !sessionForSync.accessToken) {
-        try {
-          const sessions = await shopify.sessionStorage.findSessionsByShop(resolvedShop);
-          sessionForSync = (sessions || []).find(s => s && s.accessToken) || null;
-        } catch {}
-      }
-      if (sessionForSync && sessionForSync.accessToken) {
-        const { syncPlanFromShopify } = await import('./billing.js');
-        const syncedPlan = await syncPlanFromShopify(resolvedShop, sessionForSync);
-        if (syncedPlan && syncedPlan !== plan) {
-          console.log(`Plan synced from ${plan} to ${syncedPlan} for ${resolvedShop}`);
-          plan = syncedPlan;
-          limit = plan === 'Premium' ? Infinity : (plan === 'Pro' ? 5 : 2);
-        }
-      }
-    }
-    
+
     // Final limit check
     if (cnt >= limit) {
       return res.status(403).json({ error: `Plan limit reached. Your plan (${plan}) allows ${plan === 'Premium' ? 'unlimited' : limit} charts.` });
     }
     // Ensure chart_data is a JSON string and extract optional_measurements
     const chartDataObj = typeof chart_data === 'string' ? JSON.parse(chart_data) : chart_data;
+    const enabledSizes = Array.isArray(chartDataObj?.sizes)
+      ? chartDataObj.sizes.filter((size) => size?.enabled !== false)
+      : [];
+    if (enabledSizes.length === 0) {
+      return res.status(400).json({ error: 'At least one size must remain enabled.' });
+    }
     const optional_measurements = chartDataObj?.optional_measurements || {};
     const chartDataString = JSON.stringify(chartDataObj);
+    const customSizeChartImage = typeof custom_size_chart_image === 'string' && custom_size_chart_image.trim()
+      ? custom_size_chart_image.trim()
+      : null;
     
     // Normalize category to match DB constraint
     // Normalize category against DB constraint (robust)
@@ -249,6 +281,7 @@ router.post('/api/size-recommendations', async (req, res) => {
     if (typeof category === 'string') {
       const c = category.toLowerCase();
       if (c.includes('bikini')) normalizedCategory = 'bikinis';
+      else if (c.includes('one piece') || c.includes('one-piece') || c.includes('onepiece')) normalizedCategory = 'onepieces';
       else if (c.includes('top')) normalizedCategory = 'tops';
       else if (c.includes('bottom')) normalizedCategory = 'bottoms';
       else if (c.includes('dress')) normalizedCategory = 'dresses';
@@ -257,22 +290,22 @@ router.post('/api/size-recommendations', async (req, res) => {
     // Insert the size recommendation
     let recommendationId;
     if (process.env.DATABASE_URL) {
-      const row = await req.app.locals.db.get(
-        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+      const row = await db.get(
+        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements, custom_size_chart_image)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
-        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements)]
+        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements), customSizeChartImage]
       );
       recommendationId = row?.id;
     } else {
-      const result = await req.app.locals.db.run(
-        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements)]
+      const result = await db.run(
+        `INSERT INTO size_charts (name, chart_data, category, subcategory, fit_type, shop_domain, optional_measurements, custom_size_chart_image)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [chart_name, chartDataString, normalizedCategory, subcategory || "", fit_type, resolvedShop, JSON.stringify(optional_measurements), customSizeChartImage]
       );
       recommendationId = result.lastID;
       if (!recommendationId) {
-        const row = await req.app.locals.db.get(
+        const row = await db.get(
           `SELECT id FROM size_charts WHERE name = ? AND shop_domain = ? ORDER BY id DESC LIMIT 1`,
           [chart_name, resolvedShop]
         );
@@ -287,7 +320,7 @@ router.post('/api/size-recommendations', async (req, res) => {
     if (products && products.length > 0) {
       console.log(`Saving ${products.length} products for recommendation ${recommendationId}`);
       
-      const stmt = await req.app.locals.db.prepare(
+      const stmt = await db.prepare(
         `INSERT INTO product_charts (chart_id, product_id, product_title, product_handle, product_image, shop_domain)
          VALUES (?, ?, ?, ?, ?, ?)`
       );
@@ -333,6 +366,7 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
     subcategory,
     fit_type,
     products,
+    custom_size_chart_image,
   } = req.body;
 
   const sessionShop = res.locals?.shopify?.session?.shop;
@@ -343,12 +377,48 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
   }
 
   try {
+    const db = req.app.locals.db || await getDb();
+    const plan = await syncActivePlanForShop(resolvedShop, db);
+    await reconcileChartLocks(db, resolvedShop, plan);
+
+    const existingRecommendation = await db.get(
+      `SELECT id, locked FROM size_charts WHERE id = ? AND shop_domain = ?`,
+      [recommendationId, resolvedShop]
+    );
+
+    if (!existingRecommendation) {
+      return res.status(404).send({ error: "Size recommendation not found" });
+    }
+
+    if (isLockedValue(existingRecommendation.locked)) {
+      return res.status(403).send({ error: "This size recommendation is locked on your current plan. Upgrade to edit it again." });
+    }
+
+    const enabledSizes = Array.isArray(chart_data?.sizes)
+      ? chart_data.sizes.filter((size) => size?.enabled !== false)
+      : [];
+    if (enabledSizes.length === 0) {
+      return res.status(400).send({ error: 'At least one size must remain enabled.' });
+    }
+
     // Extract optional measurements from chart_data
     const optional_measurements = chart_data.optional_measurements || {};
     const optional_measurements_json = JSON.stringify(optional_measurements);
+    const customSizeChartImage = typeof custom_size_chart_image === 'string' && custom_size_chart_image.trim()
+      ? custom_size_chart_image.trim()
+      : null;
+    let normalizedCategory = category;
+    if (typeof category === 'string') {
+      const c = category.toLowerCase();
+      if (c.includes('bikini')) normalizedCategory = 'bikinis';
+      else if (c.includes('one piece') || c.includes('one-piece') || c.includes('onepiece')) normalizedCategory = 'onepieces';
+      else if (c.includes('top')) normalizedCategory = 'tops';
+      else if (c.includes('bottom')) normalizedCategory = 'bottoms';
+      else if (c.includes('dress')) normalizedCategory = 'dresses';
+    }
 
     // Update the size recommendation
-    await req.app.locals.db.run(
+    await db.run(
       `UPDATE size_charts 
        SET name = ?, 
            chart_data = ?, 
@@ -356,15 +426,17 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
            subcategory = ?, 
            fit_type = ?, 
            optional_measurements = ?,
+           custom_size_chart_image = ?,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND shop_domain = ?`,
       [
         chart_name,
         JSON.stringify(chart_data),
-        category,
+        normalizedCategory,
         subcategory || "",
         fit_type,
         optional_measurements_json,
+        customSizeChartImage,
         recommendationId,
         resolvedShop
       ]
@@ -375,13 +447,13 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
       console.log(`Re-saving ${products.length} products for recommendation ${recommendationId}`);
       
       // First, delete existing product associations
-      await req.app.locals.db.run(
+      await db.run(
         `DELETE FROM product_charts WHERE chart_id = ?`,
         [recommendationId]
       );
 
       // Then insert new ones
-      const stmt = await req.app.locals.db.prepare(
+      const stmt = await db.prepare(
         `INSERT INTO product_charts (chart_id, product_id, product_title, product_handle, product_image, shop_domain)
          VALUES (?, ?, ?, ?, ?, ?)`
       );

@@ -1,7 +1,26 @@
 import { Router } from 'express';
 import crypto from 'crypto';
+import { readFileSync } from 'fs';
+import path from 'path';
+import shopify from '../shopify.js';
+import { fileURLToPath } from 'url';
+import { fetchProductVariantsForStorefront } from '../utils/productVariants.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
+
+function normalizeAndFilterChartSizes(sizes = []) {
+  if (!Array.isArray(sizes)) return [];
+
+  return sizes
+    .map((size) => ({
+      ...size,
+      name: size.name || size.size,
+      size: size.size || size.name,
+      enabled: size.enabled !== false,
+    }))
+    .filter((size) => size.enabled !== false);
+}
 
 // Verify the app proxy signature
 const verifyAppProxySignature = (req, res, next) => {
@@ -71,6 +90,23 @@ router.get('/test', async (req, res) => {
 });
 }
 
+// Serve widget script via app proxy – no signature check so the script always loads (script is public; data endpoints still require signature)
+router.get('/widget.js', (req, res) => {
+  const scriptPath = path.join(__dirname, '..', '..', 'extensions', 'size-buddy-widget', 'assets', 'size-buddy-v4.js');
+  try {
+    const script = readFileSync(scriptPath, 'utf8');
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(script);
+  } catch (err) {
+    console.error('Error serving widget.js via app proxy:', err);
+    res.status(500).send('Error loading widget script');
+  }
+});
+
 // Get size recommendation for a product
 router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req, res) => {
   const { shop, productId } = req.query;
@@ -128,6 +164,21 @@ router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req
       return res.status(400).send({ error: "Chart data is invalid or empty" });
     }
 
+    sizeChart.chart_data.sizes = normalizeAndFilterChartSizes(sizeChart.chart_data.sizes);
+    if (sizeChart.chart_data.sizes.length === 0) {
+      return res.status(404).send({ error: "No enabled sizes are available for this chart" });
+    }
+
+    const productVariants = await fetchProductVariantsForStorefront(shop, productId);
+    const customSizeChartImage = sizeChart.custom_size_chart_image || null;
+    if (sizeChart.chart_data && typeof sizeChart.chart_data === 'object') {
+      sizeChart.chart_data = {
+        ...sizeChart.chart_data,
+        custom_size_chart_image: customSizeChartImage
+      };
+    }
+    sizeChart.custom_size_chart_image = customSizeChartImage;
+
     // Get widget customization
     const widgetCustomization = await req.app.locals.db.get(
       `SELECT * FROM widget_customization WHERE shop_id = ?`,
@@ -137,6 +188,7 @@ router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req
     // Return the size chart and widget customization
     res.json({
       sizeChart,
+      product_variants: productVariants,
       widgetCustomization: widgetCustomization || {}
     });
   } catch (error) {
@@ -204,6 +256,11 @@ router.post('/api/proxy/get-size-recommendation', verifyAppProxySignature, async
     if (!chartData.sizes || !Array.isArray(chartData.sizes) || chartData.sizes.length === 0) {
       console.log('Chart has no sizes array or it is empty');
       return res.status(400).send({ error: "Chart has no size information" });
+    }
+
+    chartData.sizes = normalizeAndFilterChartSizes(chartData.sizes);
+    if (chartData.sizes.length === 0) {
+      return res.status(404).send({ error: "No enabled sizes are available for this chart" });
     }
     
     // =========== CRITICAL BUGFIX FOR SIZING ===========
@@ -410,24 +467,35 @@ function calculateRecommendedSize(chartData, userMeasurements) {
 
 // New endpoint to log size recommendations for analytics
 router.post('/api/proxy/log-recommendation', verifyAppProxySignature, async (req, res) => {
-  const { shop, product_id, chart_id, recommended_size, measurements } = req.body;
+  const {
+    shop,
+    product_id,
+    chart_id,
+    recommended_size,
+    measurements,
+    recommendation_token,
+    availability_status,
+    variant_id,
+  } = req.body;
 
   if (!shop || !product_id || !chart_id || !recommended_size) {
     return res.status(400).send({ error: "Missing required parameters" });
   }
 
   try {
-    // Log the recommendation
     await req.app.locals.db.run(
-      `INSERT INTO size_recommendation_analytics 
-       (product_id, chart_id, recommended_size, measurements, created_at, shop) 
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
+      `INSERT INTO size_recommendation_analytics
+       (product_id, chart_id, recommended_size, measurements, recommendation_token, availability_status, variant_id, created_at, shop)
+       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
       [
         product_id,
         chart_id,
         recommended_size,
-        JSON.stringify(measurements),
-        shop
+        JSON.stringify(measurements || {}),
+        recommendation_token || null,
+        availability_status || 'available',
+        variant_id || null,
+        shop,
       ]
     );
 
@@ -438,17 +506,88 @@ router.post('/api/proxy/log-recommendation', verifyAppProxySignature, async (req
   }
 });
 
+router.post('/api/proxy/log-add-to-cart', verifyAppProxySignature, async (req, res) => {
+  const { shop, recommendation_token, variant_id, product_id, chart_id, recommended_size } = req.body;
+
+  if (!shop || !recommendation_token) {
+    return res.status(400).send({ error: "Missing required parameters" });
+  }
+
+  try {
+    let result = await req.app.locals.db.run(
+      `UPDATE size_recommendation_analytics
+       SET added_to_cart_at = CURRENT_TIMESTAMP,
+           variant_id = COALESCE(?, variant_id)
+       WHERE shop = ? AND recommendation_token = ?`,
+      [variant_id || null, shop, recommendation_token]
+    );
+
+    if ((!result?.changes || Number(result.changes) === 0) && product_id && chart_id && recommended_size) {
+      result = await req.app.locals.db.run(
+        `UPDATE size_recommendation_analytics
+         SET added_to_cart_at = CURRENT_TIMESTAMP,
+             variant_id = COALESCE(?, variant_id),
+             recommendation_token = COALESCE(recommendation_token, ?)
+         WHERE id = (
+           SELECT id FROM size_recommendation_analytics
+           WHERE shop = ? AND product_id = ? AND chart_id = ? AND recommended_size = ?
+           ORDER BY created_at DESC
+           LIMIT 1
+         )`,
+        [variant_id || null, recommendation_token, shop, product_id, chart_id, recommended_size]
+      );
+    }
+
+    res.status(200).send({ success: true, updated: Number(result?.changes || 0) });
+  } catch (error) {
+    console.error('Error logging add to cart:', error);
+    res.status(500).send({ error: "Error logging add to cart" });
+  }
+});
+
+// Optional signature verification: skip for GET size-charts when product_id + shop are present (storefront often gets 400 otherwise)
+const optionalAppProxySignature = (req, res, next) => {
+  const hasProductId = !!req.query.product_id;
+  const hasShop = !!(Array.isArray(req.query.shop) ? req.query.shop[0] : req.query.shop);
+  if (req.method === 'GET' && hasProductId && hasShop) {
+    return next(); // allow through without signature so storefront works
+  }
+  return verifyAppProxySignature(req, res, next);
+};
+
 // Get size chart data for a product (main endpoint for widget)
-router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
+router.get('/size-charts', optionalAppProxySignature, async (req, res) => {
   const { product_id } = req.query;
-  // Derive shop from query or headers (Shopify app proxy often omits explicit shop param)
-  const headerHost = req.headers['x-forwarded-host'] || req.headers['x-shopify-shop-domain'] || req.headers['x-shopify-shop-domain'];
-  const shop = req.query.shop || (typeof headerHost === 'string' ? headerHost : (Array.isArray(headerHost) ? headerHost[0] : undefined));
+  const normalizeHeaderHost = (value) => {
+    const raw = Array.isArray(value) ? value[0] : value;
+    return typeof raw === 'string' ? raw.split(',')[0].trim() : undefined;
+  };
+  // Shop: Shopify adds it to query when proxying; fallbacks: forwarded headers, then Referer host
+  const forwardedHost = normalizeHeaderHost(req.headers['x-forwarded-host']);
+  const shopifyShopDomain = normalizeHeaderHost(req.headers['x-shopify-shop-domain']);
+  let shop = (Array.isArray(req.query.shop) ? req.query.shop[0] : req.query.shop) || shopifyShopDomain || forwardedHost;
+  
+  if (!shop && req.headers['referer']) {
+    try {
+      const refererUrl = new URL(req.headers['referer']);
+      const host = refererUrl.hostname || refererUrl.host;
+      if (host && (host.endsWith('.myshopify.com') || host.includes('myshopify.com'))) {
+        shop = host;
+      } else if (host) {
+        shop = host; // custom domain – use as-is for DB lookup
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
   
   console.log('App Proxy size-charts route hit:', {
     path: req.path,
     query: req.query,
-    originalUrl: req.originalUrl
+    'x-forwarded-host': forwardedHost,
+    'x-shopify-shop-domain': shopifyShopDomain,
+    referer: req.headers['referer'],
+    resolvedShop: shop
   });
   
   if (!product_id) {
@@ -456,16 +595,16 @@ router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
   }
   
   if (!shop) {
-    return res.status(400).json({ error: 'Missing shop parameter' });
+    return res.status(400).json({ error: 'Missing shop parameter (ensure app proxy URL includes /app-proxy and request is proxied by Shopify)' });
   }
   
+  const shopDomain = shop.includes('.myshopify.com') ? shop : shop.replace(/^https?:\/\//, '').split('/')[0];
+  
   try {
-    console.log(`Fetching size chart for product ${product_id} in shop ${shop}`);
-    
     // Find charts associated with this product - get the most recent one
     const productChart = await req.app.locals.db.get(
       `SELECT * FROM product_charts WHERE product_id = ? AND shop_domain = ? ORDER BY created_at DESC LIMIT 1`,
-      [product_id, shop]
+      [product_id, shopDomain]
     );
     
     console.log('Product chart query result:', { productChart });
@@ -479,11 +618,11 @@ router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
     const lockedCheck = process.env.DATABASE_URL ? 'FALSE' : '0';
     const chart = await req.app.locals.db.get(
       `SELECT * FROM size_charts WHERE id = ? AND shop_domain = ? AND (locked IS NULL OR locked = ${lockedCheck})`,
-      [productChart.chart_id, shop]
+      [productChart.chart_id, shopDomain]
     );
     
     if (!chart) {
-      console.log(`Chart with ID ${productChart.chart_id} not found for shop ${shop}`);
+      console.log(`Chart with ID ${productChart.chart_id} not found for shop ${shopDomain}`);
       return res.json({ found: false, error: 'Size chart not found' });
     }
     
@@ -573,36 +712,32 @@ router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
     }
     
     // For each size, ensure it has consistent name/size properties
-    chartData.sizes = chartData.sizes.map(size => {
-      // Always include both name and size properties
-      const standardSize = {
-        name: size.name || size.size,
-        size: size.size || size.name
-      };
-      
-      // Copy all other measurement properties
-      Object.keys(size).forEach(key => {
-        if (key !== 'name' && key !== 'size') {
-          standardSize[key] = size[key];
-        }
-      });
-      
-      return standardSize;
-    });
+    chartData.sizes = normalizeAndFilterChartSizes(chartData.sizes);
+    if (chartData.sizes.length === 0) {
+      return res.json({ found: false, error: 'No enabled sizes are available for this chart' });
+    }
     
     // Prepare the response
+    const productVariants = await fetchProductVariantsForStorefront(shopDomain, product_id);
+    const customSizeChartImage = chart.custom_size_chart_image || null;
     const response = {
       found: true,
+      product_variants: productVariants,
       chart: {
         id: chart.id,
         name: chart.name,
         category: chart.category,
         subcategory: chart.subcategory,
         fit_type: chart.fit_type,
+        custom_size_chart_image: customSizeChartImage,
         sizes: chartData.sizes,
         measurements: chartData.measurements || [],
-        chart_data: chartData,
-        optional_measurements: chart.optional_measurements ? JSON.parse(chart.optional_measurements) : {}
+        chart_data: {
+          ...chartData,
+          custom_size_chart_image: customSizeChartImage
+        },
+        optional_measurements: chart.optional_measurements ? JSON.parse(chart.optional_measurements) : {},
+        product_variants: productVariants
       }
     };
     

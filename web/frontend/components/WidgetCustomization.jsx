@@ -498,7 +498,7 @@ export function WidgetCustomization({ shop, host }) {
                         backgroundColor: `rgba(${settings.appearance.primaryColor?.rgb?.r || 0}, ${settings.appearance.primaryColor?.rgb?.g || 0}, ${settings.appearance.primaryColor?.rgb?.b || 0}, ${settings.appearance.primaryColor?.rgb?.a || 1})`,
                         color: '#ffffff',
                         borderRadius: 
-                          settings.appearance.buttonStyle === 'rounded' ? '8px' :
+                          settings.appearance.buttonStyle === 'rounded' ? '16px' :
                           settings.appearance.buttonStyle === 'pill' ? '999px' : '0px'
                       }}
                     >
