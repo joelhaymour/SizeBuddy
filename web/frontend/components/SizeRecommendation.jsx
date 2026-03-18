@@ -106,13 +106,24 @@ function mergeChartSizesWithDefaults(category, fitType, sizes = []) {
     return normalizedSizes;
   }
 
-  const sizeMap = new Map(normalizedSizes.map((size) => [size.size || size.name, size]));
+  const sizeMap = new Map();
 
   normalizeChartSizes(defaultChart.sizes).forEach((defaultSize) => {
     const sizeKey = defaultSize.size || defaultSize.name;
-    if (!sizeMap.has(sizeKey)) {
-      sizeMap.set(sizeKey, defaultSize);
-    }
+    sizeMap.set(sizeKey, { ...defaultSize });
+  });
+
+  normalizedSizes.forEach((size) => {
+    const sizeKey = size.size || size.name;
+    const defaultSize = sizeMap.get(sizeKey) || {};
+
+    sizeMap.set(sizeKey, {
+      ...defaultSize,
+      ...size,
+      name: size.name || size.size || defaultSize.name || defaultSize.size,
+      size: size.size || size.name || defaultSize.size || defaultSize.name,
+      enabled: size.enabled !== false,
+    });
   });
 
   const mergedSizes = Array.from(sizeMap.values());
@@ -483,6 +494,10 @@ export function SizeRecommendation({ shop, host }) {
           
           if (size.hip) {
             formattedSize.hip = size.hip.includes('-') ? size.hip : `${size.hip}-${size.hip}`;
+          }
+
+          if (size.band_size) {
+            formattedSize.band_size = size.band_size.includes('-') ? size.band_size : `${size.band_size}-${size.band_size}`;
           }
           
           if (size.dress_size) {
@@ -1385,7 +1400,12 @@ export function SizeRecommendation({ shop, host }) {
             <Box key={`hip-${sizeIndex}`} width="50%" paddingInlineEnd="2">
               {renderMeasurementSlider(sizeIndex, 'hip', size.hip, 'Hip (in)', 32, 56)}
             </Box>,
-            <Box key={`cup-size-${sizeIndex}`} width="50%" paddingInlineStart="2">
+            <Box key={`band-size-${sizeIndex}`} width="50%" paddingInlineStart="2">
+              {renderMeasurementSlider(sizeIndex, 'band_size', size.band_size, 'Band Size (in)', 26, 46)}
+            </Box>
+          ],
+          [
+            <Box key={`cup-size-${sizeIndex}`} width="100%">
               {renderMeasurementSlider(sizeIndex, 'cup_size', size.cup_size, 'Cup Size', 0, 8, 1)}
             </Box>
           ]

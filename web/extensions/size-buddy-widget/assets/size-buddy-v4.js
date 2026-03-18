@@ -1643,6 +1643,7 @@
         const hasHeightAndWeight = userMeasurements.height && userMeasurements.weight;
         const hasWaistAndHip = userMeasurements.waist && userMeasurements.hip;
         const hasHipAndCup = userMeasurements.hip && userMeasurements.cup_size;
+        const hasHipBandAndCup = userMeasurements.hip && userMeasurements.band_size && userMeasurements.cup_size;
         
         // Tops sizing: rule-guided scoring that avoids undersizing near top-of-range
         if (isTopsCategory && hasHeightAndWeight) {
@@ -1816,8 +1817,15 @@
             if (minIndex === null || maxIndex === null) return null;
             return [Math.min(minIndex, maxIndex), Math.max(minIndex, maxIndex)];
           };
+          const parseNumericRange = (value) => {
+            if (typeof value !== 'string' || !value.includes('-')) return null;
+            const [minValue, maxValue] = value.split('-').map((part) => parseFloat(part.replace('+', '').trim()));
+            if (isNaN(minValue) || isNaN(maxValue)) return null;
+            return [Math.min(minValue, maxValue), Math.max(minValue, maxValue)];
+          };
 
           const userHip = parseFloat(userMeasurements.hip);
+          const userBand = parseFloat(userMeasurements.band_size);
           const userCupIndex = parseCupIndex(String(userMeasurements.cup_size));
           const candidates = [];
 
@@ -1825,28 +1833,52 @@
             const sizeName = size.size || size.name;
             let hipMin = NaN;
             let hipMax = NaN;
+            let bandMin = NaN;
+            let bandMax = NaN;
             let hipScore = 0;
+            let bandScore = 0;
             let cupScore = 0;
 
-            if (size.hip && typeof size.hip === 'string' && size.hip.includes('-')) {
-              [hipMin, hipMax] = size.hip.split('-').map((value) => parseFloat(value.trim()));
-              if (!isNaN(hipMin) && !isNaN(hipMax)) {
-                const hipHalf = ((hipMax - hipMin) || 1) / 2;
-                const hipCenter = (hipMin + hipMax) / 2;
-                const hipInside = userHip >= hipMin && userHip <= hipMax;
+            const hipRange = parseNumericRange(size.hip);
+            if (hipRange) {
+              [hipMin, hipMax] = hipRange;
+              const hipHalf = ((hipMax - hipMin) || 1) / 2;
+              const hipCenter = (hipMin + hipMax) / 2;
+              const hipInside = userHip >= hipMin && userHip <= hipMax;
 
-                if (hipInside) {
-                  const base = Math.max(0, 1 - (Math.abs(userHip - hipCenter) / hipHalf));
-                  hipScore = 0.65 + (0.35 * base);
-                } else if (userHip > hipMax) {
-                  const excess = userHip - hipMax;
-                  const range = hipMax - hipMin;
-                  const excessRatio = excess / (range || 1);
-                  hipScore = Math.max(0, 0.2 - (excessRatio * 0.2));
-                } else {
-                  const base = Math.max(0, 1 - (Math.abs(userHip - hipCenter) / hipHalf));
-                  hipScore = base * 0.55;
-                }
+              if (hipInside) {
+                const base = Math.max(0, 1 - (Math.abs(userHip - hipCenter) / hipHalf));
+                hipScore = 0.65 + (0.35 * base);
+              } else if (userHip > hipMax) {
+                const excess = userHip - hipMax;
+                const range = hipMax - hipMin;
+                const excessRatio = excess / (range || 1);
+                hipScore = Math.max(0, 0.2 - (excessRatio * 0.2));
+              } else {
+                const base = Math.max(0, 1 - (Math.abs(userHip - hipCenter) / hipHalf));
+                hipScore = base * 0.55;
+              }
+            }
+
+            const bandRange = parseNumericRange(size.band_size);
+            const useBandScore = bandRange && hasHipBandAndCup && !isNaN(userBand);
+            if (useBandScore) {
+              [bandMin, bandMax] = bandRange;
+              const bandHalf = ((bandMax - bandMin) || 1) / 2;
+              const bandCenter = (bandMin + bandMax) / 2;
+              const bandInside = userBand >= bandMin && userBand <= bandMax;
+
+              if (bandInside) {
+                const base = Math.max(0, 1 - (Math.abs(userBand - bandCenter) / bandHalf));
+                bandScore = 0.7 + (0.3 * base);
+              } else if (userBand > bandMax) {
+                const excess = userBand - bandMax;
+                const range = bandMax - bandMin;
+                const excessRatio = excess / (range || 1);
+                bandScore = Math.max(0, 0.18 - (excessRatio * 0.18));
+              } else {
+                const base = Math.max(0, 1 - (Math.abs(userBand - bandCenter) / bandHalf));
+                bandScore = base * 0.55;
               }
             }
 
@@ -1862,16 +1894,26 @@
             }
 
             const hipExceedsMax = !isNaN(hipMax) && userHip > hipMax;
+            const bandExceedsMax = useBandScore && !isNaN(bandMax) && userBand > bandMax;
             const nearUpperHip = !isNaN(hipMin) && !isNaN(hipMax) && userHip >= (hipMin + (0.75 * (hipMax - hipMin)));
+            const nearUpperBand = useBandScore && !isNaN(bandMin) && !isNaN(bandMax) && userBand >= (bandMin + (0.75 * (bandMax - bandMin)));
             const nearUpperCup = cupRange && userCupIndex !== null && userCupIndex >= (cupRange[0] + (0.75 * (cupRange[1] - cupRange[0])));
-            const matchScore = hipExceedsMax ? 0 : Math.min(1, (0.65 * hipScore) + (0.35 * cupScore) + (nearUpperHip ? 0.08 : 0) + (nearUpperCup ? 0.04 : 0));
+            const matchScore = useBandScore
+              ? ((hipExceedsMax || bandExceedsMax)
+                  ? 0
+                  : Math.min(1, (0.5 * hipScore) + (0.3 * bandScore) + (0.2 * cupScore) + (nearUpperHip ? 0.06 : 0) + (nearUpperBand ? 0.05 : 0) + (nearUpperCup ? 0.03 : 0)))
+              : (hipExceedsMax
+                  ? 0
+                  : Math.min(1, (0.65 * hipScore) + (0.35 * cupScore) + (nearUpperHip ? 0.08 : 0) + (nearUpperCup ? 0.04 : 0)));
 
             candidates.push({
               name: sizeName,
               score: matchScore,
               nearUpperHip,
+              nearUpperBand,
               nearUpperCup,
-              hipExceedsMax
+              hipExceedsMax,
+              bandExceedsMax
             });
           });
 
@@ -1879,7 +1921,7 @@
             candidates.sort((a, b) => b.score - a.score || order.indexOf(a.name) - order.indexOf(b.name));
             const topScore = candidates[0].score;
             const close = candidates.filter((candidate) => candidate.score >= topScore - 0.03);
-            const withUpper = close.filter((candidate) => candidate.nearUpperHip || candidate.nearUpperCup);
+            const withUpper = close.filter((candidate) => candidate.nearUpperHip || candidate.nearUpperBand || candidate.nearUpperCup);
             const pickFrom = withUpper.length ? withUpper : close;
             pickFrom.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
             const chosen = pickFrom[pickFrom.length - 1];

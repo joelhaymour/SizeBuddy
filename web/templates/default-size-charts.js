@@ -169,40 +169,40 @@ export const defaultSizeCharts = {
     slim: {
       name: "One Pieces - Slim Fit",
       sizes: [
-        { size: "XXS", hip: "29-32", cup_size: "A-A" },
-        { size: "XS", hip: "29-32", cup_size: "A-A" },
-        { size: "S", hip: "32-35", cup_size: "A-B" },
-        { size: "M", hip: "35-38", cup_size: "B-C" },
-        { size: "L", hip: "38-41", cup_size: "C-D" },
-        { size: "XL", hip: "41-44", cup_size: "D-DD" },
-        { size: "XXL", hip: "44-47", cup_size: "DD-DDD" },
-        { size: "XXXL", hip: "47-51", cup_size: "DDD-F" }
+        { size: "XXS", hip: "29-32", band_size: "26-28", cup_size: "A-A" },
+        { size: "XS", hip: "29-32", band_size: "26-28", cup_size: "A-A" },
+        { size: "S", hip: "32-35", band_size: "28-30", cup_size: "A-B" },
+        { size: "M", hip: "35-38", band_size: "30-32", cup_size: "B-C" },
+        { size: "L", hip: "38-41", band_size: "32-34", cup_size: "C-D" },
+        { size: "XL", hip: "41-44", band_size: "34-36", cup_size: "D-DD" },
+        { size: "XXL", hip: "44-47", band_size: "36-38", cup_size: "DD-DDD" },
+        { size: "XXXL", hip: "47-51", band_size: "38-40", cup_size: "DDD-F" }
       ]
     },
     regular: {
       name: "One Pieces - Regular Fit",
       sizes: [
-        { size: "XXS", hip: "29-32", cup_size: "A-A" },
-        { size: "XS", hip: "32-35", cup_size: "A-B" },
-        { size: "S", hip: "35-38", cup_size: "B-C" },
-        { size: "M", hip: "38-41", cup_size: "C-D" },
-        { size: "L", hip: "41-44", cup_size: "D-DD" },
-        { size: "XL", hip: "44-47", cup_size: "DD-DDD" },
-        { size: "XXL", hip: "47-51", cup_size: "DDD-F" },
-        { size: "XXXL", hip: "51-54", cup_size: "F-G" }
+        { size: "XXS", hip: "29-32", band_size: "26-28", cup_size: "A-A" },
+        { size: "XS", hip: "32-35", band_size: "28-30", cup_size: "A-B" },
+        { size: "S", hip: "35-38", band_size: "30-32", cup_size: "B-C" },
+        { size: "M", hip: "38-41", band_size: "32-34", cup_size: "C-D" },
+        { size: "L", hip: "41-44", band_size: "34-36", cup_size: "D-DD" },
+        { size: "XL", hip: "44-47", band_size: "36-38", cup_size: "DD-DDD" },
+        { size: "XXL", hip: "47-51", band_size: "38-40", cup_size: "DDD-F" },
+        { size: "XXXL", hip: "51-54", band_size: "40-42", cup_size: "F-G" }
       ]
     },
     loose: {
       name: "One Pieces - Loose Fit",
       sizes: [
-        { size: "XXS", hip: "32-35", cup_size: "A-B" },
-        { size: "XS", hip: "35-38", cup_size: "B-C" },
-        { size: "S", hip: "38-41", cup_size: "C-D" },
-        { size: "M", hip: "41-44", cup_size: "D-DD" },
-        { size: "L", hip: "44-47", cup_size: "DD-DDD" },
-        { size: "XL", hip: "47-51", cup_size: "DDD-F" },
-        { size: "XXL", hip: "51-54", cup_size: "F-G" },
-        { size: "XXXL", hip: "51-54", cup_size: "F-G" }
+        { size: "XXS", hip: "32-35", band_size: "28-30", cup_size: "A-B" },
+        { size: "XS", hip: "35-38", band_size: "30-32", cup_size: "B-C" },
+        { size: "S", hip: "38-41", band_size: "32-34", cup_size: "C-D" },
+        { size: "M", hip: "41-44", band_size: "34-36", cup_size: "D-DD" },
+        { size: "L", hip: "44-47", band_size: "36-38", cup_size: "DD-DDD" },
+        { size: "XL", hip: "47-51", band_size: "38-40", cup_size: "DDD-F" },
+        { size: "XXL", hip: "51-54", band_size: "40-42", cup_size: "F-G" },
+        { size: "XXXL", hip: "51-54", band_size: "40-42", cup_size: "F-G" }
       ]
     }
   }
