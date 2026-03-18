@@ -263,6 +263,12 @@ router.post('/api/size-recommendations', async (req, res) => {
     }
     // Ensure chart_data is a JSON string and extract optional_measurements
     const chartDataObj = typeof chart_data === 'string' ? JSON.parse(chart_data) : chart_data;
+    const enabledSizes = Array.isArray(chartDataObj?.sizes)
+      ? chartDataObj.sizes.filter((size) => size?.enabled !== false)
+      : [];
+    if (enabledSizes.length === 0) {
+      return res.status(400).json({ error: 'At least one size must remain enabled.' });
+    }
     const optional_measurements = chartDataObj?.optional_measurements || {};
     const chartDataString = JSON.stringify(chartDataObj);
     const customSizeChartImage = typeof custom_size_chart_image === 'string' && custom_size_chart_image.trim()
@@ -386,6 +392,13 @@ router.put('/api/size-recommendations/:id', async (req, res) => {
 
     if (isLockedValue(existingRecommendation.locked)) {
       return res.status(403).send({ error: "This size recommendation is locked on your current plan. Upgrade to edit it again." });
+    }
+
+    const enabledSizes = Array.isArray(chart_data?.sizes)
+      ? chart_data.sizes.filter((size) => size?.enabled !== false)
+      : [];
+    if (enabledSizes.length === 0) {
+      return res.status(400).send({ error: 'At least one size must remain enabled.' });
     }
 
     // Extract optional measurements from chart_data

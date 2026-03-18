@@ -85,6 +85,51 @@ function calculateScoreRange(height, weight, fitType) {
   return `${Math.round(adjustedMinScore)}-${Math.round(adjustedMaxScore)}`;
 }
 
+const DEFAULT_SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+
+function normalizeChartSizes(sizes = []) {
+  if (!Array.isArray(sizes)) return [];
+
+  return sizes.map((size) => ({
+    ...size,
+    name: size.name || size.size,
+    size: size.size || size.name,
+    enabled: size.enabled !== false,
+  }));
+}
+
+function mergeChartSizesWithDefaults(category, fitType, sizes = []) {
+  const normalizedSizes = normalizeChartSizes(sizes);
+  const defaultChart = defaultSizeCharts?.[category]?.[fitType];
+
+  if (!defaultChart?.sizes?.length) {
+    return normalizedSizes;
+  }
+
+  const sizeMap = new Map(normalizedSizes.map((size) => [size.size || size.name, size]));
+
+  normalizeChartSizes(defaultChart.sizes).forEach((defaultSize) => {
+    const sizeKey = defaultSize.size || defaultSize.name;
+    if (!sizeMap.has(sizeKey)) {
+      sizeMap.set(sizeKey, defaultSize);
+    }
+  });
+
+  const mergedSizes = Array.from(sizeMap.values());
+
+  return mergedSizes.sort((a, b) => {
+    const aSize = a.size || a.name;
+    const bSize = b.size || b.name;
+    const aIndex = DEFAULT_SIZE_ORDER.indexOf(aSize);
+    const bIndex = DEFAULT_SIZE_ORDER.indexOf(bSize);
+
+    if (aIndex === -1 && bIndex === -1) return String(aSize).localeCompare(String(bSize));
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
+}
+
 export function SizeRecommendation({ shop, host }) {
   const navigate = useNavigate();
   const app = useAppBridge();
@@ -420,7 +465,7 @@ export function SizeRecommendation({ shop, host }) {
       // Ensure the measurements are in the correct format
       const formattedChart = {
         ...defaultChart,
-        sizes: defaultChart.sizes.map(size => {
+        sizes: normalizeChartSizes(defaultChart.sizes).map(size => {
           const formattedSize = { ...size };
           
           // Only process properties that exist
@@ -528,6 +573,7 @@ export function SizeRecommendation({ shop, host }) {
       if (!parsedChartData.optional_measurements) {
         parsedChartData.optional_measurements = {};
       }
+      parsedChartData.sizes = mergeChartSizesWithDefaults(uiCategory, chart.fit_type, parsedChartData.sizes);
       setCurrentSizeRecommendation(parsedChartData);
     } catch (error) {
       console.error('Error processing chart data:', error);
@@ -609,6 +655,19 @@ export function SizeRecommendation({ shop, host }) {
 
       // Deep clone the current size recommendation to avoid reference issues
       const processedSizeRecommendation = JSON.parse(JSON.stringify(currentSizeRecommendation));
+
+      const enabledSizeCount = Array.isArray(processedSizeRecommendation?.sizes)
+        ? processedSizeRecommendation.sizes.filter((size) => size.enabled !== false).length
+        : 0;
+
+      if (enabledSizeCount === 0) {
+        setToastProps({
+          content: 'Please keep at least one size enabled.',
+          error: true
+        });
+        setShowToast(true);
+        return;
+      }
       
       // Ensure all cup_size values are properly formatted as strings
       if (processedSizeRecommendation && processedSizeRecommendation.sizes) {
@@ -918,6 +977,16 @@ export function SizeRecommendation({ shop, host }) {
         })
       };
       console.log('Updating measurement:', { field, value, updatedSizeRecommendation });
+      setCurrentSizeRecommendation(updatedSizeRecommendation);
+    };
+
+    const handleSizeEnabledToggle = (sizeIndex, enabled) => {
+      const updatedSizeRecommendation = {
+        ...currentSizeRecommendation,
+        sizes: currentSizeRecommendation.sizes.map((size, index) => (
+          index === sizeIndex ? { ...size, enabled } : size
+        ))
+      };
       setCurrentSizeRecommendation(updatedSizeRecommendation);
     };
 
@@ -1267,6 +1336,7 @@ export function SizeRecommendation({ shop, host }) {
 
     const rows = currentSizeRecommendation.sizes.map((size, sizeIndex) => {
       let measurementRows = [];
+      const enabled = size.enabled !== false;
       
       if (selectedCategory === 'tops') {
         measurementRows = [
@@ -1323,7 +1393,8 @@ export function SizeRecommendation({ shop, host }) {
       }
       
       return {
-        size: size.size,
+        size: size.size || size.name,
+        enabled,
         measurements: measurementRows
       };
     });
@@ -1417,33 +1488,70 @@ export function SizeRecommendation({ shop, host }) {
                 </Text>
                 <Box paddingBlockStart="4">
                   {/* Custom layout instead of DataTable */}
-                  {rows.map((sizeData, sizeIndex) => (
-                    <div key={`size-section-${sizeIndex}`} style={{
-                      border: '2px solid #5c6ac4', // Shopify blue border
-                      borderRadius: '8px',
-                      padding: '10px',
-                      marginBottom: '16px',
-                      boxShadow: '0px 1px 6px rgba(0, 0, 0, 0.05)'
-                    }}>
-                      {/* Size label as a header - more compact */}
-                      <Box padding="2" background="bg-surface" borderRadius="2" 
-                           style={{ marginBottom: '10px', textAlign: 'center', borderBottom: '1px solid #e1e3e5' }}>
-                        <Text variant="headingMd" as="h3" fontWeight="bold">
-                          {sizeData.size}
-                        </Text>
-                      </Box>
-                      
-                      {/* Measurement sliders - reduced spacing */}
-                      <div style={{ marginBottom: '4px', width: '100%' }}>
-                        {sizeData.measurements.map((measurementRow, rowIndex) => (
-                          <div key={`measurement-row-${sizeIndex}-${rowIndex}`} 
-                               style={{ width: '100%', marginBottom: '10px', display: 'flex' }}>
-                            {measurementRow}
+                  {rows.map((sizeData, sizeIndex) => {
+                    const includeToggleId = `include-size-${sizeIndex}`;
+
+                    return (
+                      <div key={`size-section-${sizeIndex}`} style={{
+                        border: sizeData.enabled ? '2px solid #5c6ac4' : '1px solid #d8dee4',
+                        borderRadius: '12px',
+                        padding: '12px',
+                        marginBottom: '16px',
+                        boxShadow: '0px 1px 6px rgba(0, 0, 0, 0.05)',
+                        background: sizeData.enabled ? '#ffffff' : '#f6f6f7',
+                        opacity: sizeData.enabled ? 1 : 0.8
+                      }}>
+                        <Box padding="2" background="bg-surface" borderRadius="2"
+                             style={{ marginBottom: '10px', borderBottom: '1px solid #e1e3e5' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                            <Text variant="headingMd" as="h3" fontWeight="bold">
+                              {sizeData.size}
+                            </Text>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <Text as="span" variant="bodySm" color="subdued">
+                                Include size
+                              </Text>
+                              <div className="Polaris-Toggle">
+                                <input
+                                  type="checkbox"
+                                  id={includeToggleId}
+                                  className="Polaris-Toggle__Input"
+                                  checked={sizeData.enabled}
+                                  onChange={(event) => handleSizeEnabledToggle(sizeIndex, event.target.checked)}
+                                />
+                                <label className="Polaris-Toggle__Label" htmlFor={includeToggleId}>
+                                  <span className="Polaris-Toggle__Track">
+                                    <span className="Polaris-Toggle__Icon"></span>
+                                  </span>
+                                </label>
+                              </div>
+                            </div>
                           </div>
-                        ))}
+                        </Box>
+
+                        {sizeData.enabled ? (
+                          <div style={{ marginBottom: '4px', width: '100%' }}>
+                            {sizeData.measurements.map((measurementRow, rowIndex) => (
+                              <div key={`measurement-row-${sizeIndex}-${rowIndex}`}
+                                   style={{ width: '100%', marginBottom: '10px', display: 'flex' }}>
+                                {measurementRow}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <Box
+                            padding="4"
+                            background="bg-surface-secondary"
+                            borderRadius="2"
+                          >
+                            <Text variant="bodyMd" as="p" color="subdued">
+                              This size will be hidden from shoppers and excluded from recommendations until you turn it back on.
+                            </Text>
+                          </Box>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </Box>
               </Box>
             </LegacyCard>

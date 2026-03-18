@@ -1044,7 +1044,7 @@
           const firstSize = chart.sizes[0];
           Object.keys(firstSize).forEach(key => {
             // Skip the relative_size field and score field
-            if (key !== 'name' && key !== 'size' && key !== 'relative_size' && key !== 'score' && key !== 'optional_measurements') {
+            if (key !== 'name' && key !== 'size' && key !== 'relative_size' && key !== 'score' && key !== 'optional_measurements' && key !== 'enabled') {
               // Check if this is a cup size measurement
               const isCupSize = key.toLowerCase().includes('cup');
               
@@ -1649,7 +1649,7 @@
           const heightInches = parseFloat(userMeasurements.height);
           const weightLbs = parseFloat(userMeasurements.weight);
 
-          const order = ['XS','S','M','L','XL','XXL'];
+          const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
           const candidates = [];
 
           chart.sizes.forEach(size => {
@@ -1755,7 +1755,7 @@
           // 1) Pick sizes that fit waist within ±1" tolerance
           // 2) Among them, choose the smallest size whose hip max accommodates the user's hip;
           //    if none do, size up until hips fit.
-          const order = ['XS','S','M','L','XL','XXL'];
+          const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
           const waistTol = 1; // inches
           const hipTol = 0;   // require hips to be within range; adjust if you want forgiveness
 
@@ -1800,7 +1800,7 @@
             bestScore = 1;
           }
         } else if (isOnePiecesCategory && hasHipAndCup) {
-          const order = ['XS','S','M','L','XL','XXL'];
+          const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
           const cupOrder = ['A','B','C','D','DD','DDD','F','G','H+'];
           const parseCupIndex = (value) => {
             if (typeof value !== 'string') return null;
@@ -1995,7 +1995,7 @@
           };
           const u = toIndex(userMeasurements.cup_size);
           if (u !== null) {
-            const order = ['XS','S','M','L','XL','XXL'];
+            const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
             const candidates = [];
             chart.sizes.forEach(size => {
               const r = parseRange(size.cup_size);
@@ -2067,7 +2067,7 @@
           if (bestSizes.length > 0) {
             // Sort by size order
             bestSizes.sort((a, b) => {
-              const order = ['XS','S','M','L','XL','XXL'];
+              const order = ['XXS','XS','S','M','L','XL','XXL','XXXL'];
               return order.indexOf(a) - order.indexOf(b);
             });
             // Pick the middle size if multiple ties (conservative fit)

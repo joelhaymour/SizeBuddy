@@ -41,6 +41,19 @@ const STATIC_PATH =
 
 const app = express();
 
+function normalizeAndFilterChartSizes(sizes = []) {
+  if (!Array.isArray(sizes)) return [];
+
+  return sizes
+    .map((size) => ({
+      ...size,
+      name: size.name || size.size,
+      size: size.size || size.name,
+      enabled: size.enabled !== false,
+    }))
+    .filter((size) => size.enabled !== false);
+}
+
 // Parse JSON for all endpoints EXCEPT the Shopify webhook path (raw body required)
 app.use((req, res, next) => {
   if (req.path === (shopify.config?.webhooks?.path || '/api/webhooks')) {
@@ -469,11 +482,10 @@ app.get('/public/size-charts', async (req, res) => {
       });
     }
 
-    chartData.sizes = chartData.sizes.map(s => {
-      const n = { name: s.name || s.size, size: s.size || s.name };
-      Object.keys(s).forEach(k => { if (k !== 'name' && k !== 'size') n[k] = s[k]; });
-      return n;
-    });
+    chartData.sizes = normalizeAndFilterChartSizes(chartData.sizes);
+    if (chartData.sizes.length === 0) {
+      return res.json({ found: false, error: 'No enabled sizes are available for this chart' });
+    }
 
     const customSizeChartImage = chart.custom_size_chart_image || null;
 

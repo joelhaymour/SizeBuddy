@@ -9,6 +9,19 @@ import { fetchProductVariantsForStorefront } from '../utils/productVariants.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
+function normalizeAndFilterChartSizes(sizes = []) {
+  if (!Array.isArray(sizes)) return [];
+
+  return sizes
+    .map((size) => ({
+      ...size,
+      name: size.name || size.size,
+      size: size.size || size.name,
+      enabled: size.enabled !== false,
+    }))
+    .filter((size) => size.enabled !== false);
+}
+
 // Verify the app proxy signature
 const verifyAppProxySignature = (req, res, next) => {
   const { signature, ...params } = req.query;
@@ -151,6 +164,11 @@ router.get('/api/proxy/size-recommendation', verifyAppProxySignature, async (req
       return res.status(400).send({ error: "Chart data is invalid or empty" });
     }
 
+    sizeChart.chart_data.sizes = normalizeAndFilterChartSizes(sizeChart.chart_data.sizes);
+    if (sizeChart.chart_data.sizes.length === 0) {
+      return res.status(404).send({ error: "No enabled sizes are available for this chart" });
+    }
+
     const productVariants = await fetchProductVariantsForStorefront(shop, productId);
     const customSizeChartImage = sizeChart.custom_size_chart_image || null;
     if (sizeChart.chart_data && typeof sizeChart.chart_data === 'object') {
@@ -238,6 +256,11 @@ router.post('/api/proxy/get-size-recommendation', verifyAppProxySignature, async
     if (!chartData.sizes || !Array.isArray(chartData.sizes) || chartData.sizes.length === 0) {
       console.log('Chart has no sizes array or it is empty');
       return res.status(400).send({ error: "Chart has no size information" });
+    }
+
+    chartData.sizes = normalizeAndFilterChartSizes(chartData.sizes);
+    if (chartData.sizes.length === 0) {
+      return res.status(404).send({ error: "No enabled sizes are available for this chart" });
     }
     
     // =========== CRITICAL BUGFIX FOR SIZING ===========
@@ -689,22 +712,10 @@ router.get('/size-charts', optionalAppProxySignature, async (req, res) => {
     }
     
     // For each size, ensure it has consistent name/size properties
-    chartData.sizes = chartData.sizes.map(size => {
-      // Always include both name and size properties
-      const standardSize = {
-        name: size.name || size.size,
-        size: size.size || size.name
-      };
-      
-      // Copy all other measurement properties
-      Object.keys(size).forEach(key => {
-        if (key !== 'name' && key !== 'size') {
-          standardSize[key] = size[key];
-        }
-      });
-      
-      return standardSize;
-    });
+    chartData.sizes = normalizeAndFilterChartSizes(chartData.sizes);
+    if (chartData.sizes.length === 0) {
+      return res.json({ found: false, error: 'No enabled sizes are available for this chart' });
+    }
     
     // Prepare the response
     const productVariants = await fetchProductVariantsForStorefront(shopDomain, product_id);
