@@ -1084,6 +1084,15 @@ async function initializeDatabase() {
       } catch (e) {
         console.warn('Skipping custom_size_chart_image column update:', e.message || e);
       }
+
+      try {
+        await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN IF NOT EXISTS recommendation_token TEXT`);
+        await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN IF NOT EXISTS availability_status TEXT`);
+        await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN IF NOT EXISTS variant_id TEXT`);
+        await db.run(`ALTER TABLE size_recommendation_analytics ADD COLUMN IF NOT EXISTS added_to_cart_at TIMESTAMPTZ`);
+      } catch (e) {
+        console.warn('Skipping size_recommendation_analytics column updates:', e.message || e);
+      }
     } catch (e) {
       console.error('Postgres schema init error:', e);
     }
