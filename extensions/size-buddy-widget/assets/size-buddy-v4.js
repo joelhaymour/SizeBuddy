@@ -93,7 +93,7 @@
     modalContent.style.padding = '25px';
     modalContent.style.border = 'none';
     modalContent.style.width = '100%';
-    modalContent.style.maxWidth = '560px';
+    modalContent.style.maxWidth = '700px';
     modalContent.style.maxHeight = 'calc(100vh - 48px)';
     modalContent.style.borderRadius = '24px';
     modalContent.style.position = 'relative';
@@ -106,11 +106,11 @@
     
     // Responsive styles for mobile
     if (window.innerWidth <= 600) {
-      modal.style.padding = '16px 12px';
-      modalContent.style.maxWidth = '420px';
-      modalContent.style.padding = '18px 16px 20px';
-      modalContent.style.maxHeight = 'calc(100vh - 32px)';
-      modalContent.style.borderRadius = '20px';
+      modal.style.padding = '20px 14px';
+      modalContent.style.maxWidth = '360px';
+      modalContent.style.padding = '16px 14px 18px';
+      modalContent.style.maxHeight = '78vh';
+      modalContent.style.borderRadius = '18px';
     }
     
     // Add animation when modal opens
