@@ -2548,7 +2548,11 @@
   async function logSizeRecommendation(chartId, recommendedSize, measurements, shopDomain, productId, options) {
     try {
       const analyticsOptions = options || {};
-      const recommendationToken = analyticsOptions.recommendationToken || generateRecommendationToken();
+      const recommendationToken = analyticsOptions.recommendationToken || (
+        (window.crypto && typeof window.crypto.randomUUID === 'function')
+          ? window.crypto.randomUUID()
+          : 'sb-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10)
+      );
       const payload = {
         shop: shopDomain,
         product_id: productId,
@@ -2559,7 +2563,8 @@
         availability_status: analyticsOptions.availabilityStatus || 'available',
         variant_id: analyticsOptions.variantId || null
       };
-      setCurrentRecommendationContext({
+      if (!window.sizeBuddyCurrentRecommendation) window.sizeBuddyCurrentRecommendation = {};
+      window.sizeBuddyCurrentRecommendation[String(productId)] = {
         chartId: chartId,
         productId: String(productId),
         recommendedSize: recommendedSize,
@@ -2567,7 +2572,7 @@
         shopDomain: shopDomain,
         availabilityStatus: payload.availability_status,
         variantId: payload.variant_id
-      });
+      };
       console.log('logSizeRecommendation called with:', { chartId, recommendedSize, measurements, shopDomain, productId, recommendationToken });
       const backendBase = window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
       const backendUrl = (backendBase || '').replace(/\/$/, '');
