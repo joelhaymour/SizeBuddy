@@ -365,12 +365,12 @@ export function Analytics({ shop, host }) {
     {
       title: 'Store Average: Rec -> Add-to-Cart %',
       value: formatPercent(analyticsData.summary.recommendationToAddToCartRate),
-      subtitle: 'Available recommendations only. Sold-out and unavailable recommendations are excluded.',
+      subtitle: 'Tracked available recommendations only. Historical pre-attribution recommendations are excluded.',
     },
     {
       title: 'Store Average: Rec -> Purchase %',
       value: formatPercent(analyticsData.summary.recommendationToPurchaseRate),
-      subtitle: 'Attributed purchases from available Size Buddy recommendations.',
+      subtitle: 'Tracked available recommendations only, using matched recommendation tokens from attributed purchases.',
     },
   ]), [analyticsData.summary]);
 
@@ -379,13 +379,14 @@ export function Analytics({ shop, host }) {
     const storePurchaseAverage = Number(analyticsData.summary.recommendationToPurchaseRate || 0);
     const currency = analyticsData.summary.currency || 'USD';
 
-    const eligibleProducts = analyticsData.productPerformance.filter((product) => Number(product?.total_recommendations || 0) >= MIN_INSIGHT_RECOMMENDATIONS);
+    const eligibleProducts = analyticsData.productPerformance.filter((product) => Number(product?.available_recommendations || 0) >= MIN_INSIGHT_RECOMMENDATIONS);
 
     const winners = [];
     const friction = [];
 
     eligibleProducts.forEach((product) => {
       const totalRecommendations = Number(product?.total_recommendations || 0);
+      const trackedTotalRecommendations = Number(product?.tracked_total_recommendations || 0);
       const availableRecommendations = Number(product?.available_recommendations || 0);
       const addToCartRate = Number(product?.rec_to_add_to_cart_rate || 0);
       const purchaseRate = Number(product?.rec_to_purchase_rate || 0);
@@ -395,7 +396,7 @@ export function Analytics({ shop, host }) {
       const unavailableRate = totalRecommendations ? (unavailableRecommendations / totalRecommendations) * 100 : 0;
       const addToCartLift = addToCartRate - storeAddToCartAverage;
       const purchaseLift = purchaseRate - storePurchaseAverage;
-      const confidence = Math.max(0.75, Math.min(1, totalRecommendations / 20));
+      const confidence = Math.max(0.75, Math.min(1, Math.max(availableRecommendations, trackedTotalRecommendations) / 20));
 
       const winnerReasons = [];
       const winnerSignals = [];
@@ -478,8 +479,8 @@ export function Analytics({ shop, host }) {
       }
     });
 
-    winners.sort((left, right) => right.score - left.score || right.total_recommendations - left.total_recommendations);
-    friction.sort((left, right) => right.score - left.score || right.total_recommendations - left.total_recommendations);
+    winners.sort((left, right) => right.score - left.score || right.available_recommendations - left.available_recommendations);
+    friction.sort((left, right) => right.score - left.score || right.available_recommendations - left.available_recommendations);
 
     return {
       winners,
@@ -631,9 +632,9 @@ export function Analytics({ shop, host }) {
       >
         <InsightPanel
           title="Winning Products"
-          subtitle={`Products with at least ${MIN_INSIGHT_RECOMMENDATIONS} recommendations that are clearly outperforming store averages.`}
+          subtitle={`Products with at least ${MIN_INSIGHT_RECOMMENDATIONS} tracked recommendations that are clearly outperforming store averages.`}
           items={insightData.winners}
-          emptyMessage={`No products with ${MIN_INSIGHT_RECOMMENDATIONS}+ recommendations are clearly outperforming the store average yet.`}
+          emptyMessage={`No products with ${MIN_INSIGHT_RECOMMENDATIONS}+ tracked recommendations are clearly outperforming the store average yet.`}
           showAll={showAllWinners}
           onToggleShowAll={() => setShowAllWinners((current) => !current)}
           onItemClick={handleInsightProductClick}
@@ -641,9 +642,9 @@ export function Analytics({ shop, host }) {
 
         <InsightPanel
           title="Friction Detected"
-          subtitle={`Products with at least ${MIN_INSIGHT_RECOMMENDATIONS} recommendations that clearly show stock or conversion friction.`}
+          subtitle={`Products with at least ${MIN_INSIGHT_RECOMMENDATIONS} tracked recommendations that clearly show stock or conversion friction.`}
           items={insightData.friction}
-          emptyMessage={`No products with ${MIN_INSIGHT_RECOMMENDATIONS}+ recommendations are showing meaningful friction right now.`}
+          emptyMessage={`No products with ${MIN_INSIGHT_RECOMMENDATIONS}+ tracked recommendations are showing meaningful friction right now.`}
           showAll={showAllFriction}
           onToggleShowAll={() => setShowAllFriction((current) => !current)}
           onItemClick={handleInsightProductClick}
@@ -658,7 +659,7 @@ export function Analytics({ shop, host }) {
           </Text>
           <div style={{ marginTop: 6 }}>
             <Text as="p" variant="bodyMd" tone="subdued">
-              Recommendation to add-to-cart excludes recommendations where the recommended size was sold out or unavailable for that product.
+              Recommendation-to-cart and recommendation-to-purchase percentages use tracked available recommendations only, so older pre-attribution recommendations do not dilute the conversion rates.
             </Text>
           </div>
         </LegacyCard.Section>
@@ -763,7 +764,7 @@ export function Analytics({ shop, host }) {
                             {formatPercent(product.rec_to_add_to_cart_rate)}
                           </Text>
                           <Text as="p" variant="bodySm" tone="subdued">
-                            {`${product.add_to_cart_total || 0} of ${product.available_recommendations || 0} available recommendations`}
+                            {`${product.add_to_cart_total || 0} of ${product.available_recommendations || 0} tracked recommendations`}
                           </Text>
                         </div>
 
@@ -784,7 +785,7 @@ export function Analytics({ shop, host }) {
                             {formatPercent(product.rec_to_purchase_rate)}
                           </Text>
                           <Text as="p" variant="bodySm" tone="subdued">
-                            {`${product.purchase_total || 0} purchases`}
+                            {`${product.purchase_total || 0} purchases from ${product.available_recommendations || 0} tracked recommendations`}
                           </Text>
                         </div>
                       </div>

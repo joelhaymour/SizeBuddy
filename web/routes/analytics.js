@@ -76,6 +76,11 @@ function toPercentage(numerator, denominator) {
   return Number(((numerator / denominator) * 100).toFixed(1));
 }
 
+function hasTrackedRecommendationToken(recommendation) {
+  const token = recommendation?.recommendation_token;
+  return typeof token === 'string' ? token.trim().length > 0 : Boolean(token);
+}
+
 async function getLatestProducts(db, shop) {
   const rows = await db.all(
     `SELECT product_id, product_title, product_handle
@@ -157,28 +162,6 @@ async function getWidgetViews(db, shop, startDate) {
 }
 
 function buildProductPerformance(recommendations, purchases, productLookup) {
-  const purchaseTokenSet = new Set();
-  const productPurchaseMap = new Map();
-
-  for (const purchase of purchases) {
-    const recommendationToken = purchase?.recommendation_token ? String(purchase.recommendation_token) : null;
-    if (recommendationToken) purchaseTokenSet.add(recommendationToken);
-
-    const productId = purchase?.product_id ? String(purchase.product_id) : null;
-    if (!productId) continue;
-
-    if (!productPurchaseMap.has(productId)) {
-      productPurchaseMap.set(productId, {
-        revenue_generated: 0,
-        purchase_tokens: new Set(),
-      });
-    }
-
-    const bucket = productPurchaseMap.get(productId);
-    bucket.revenue_generated += Number(purchase?.revenue_amount || 0);
-    if (recommendationToken) bucket.purchase_tokens.add(recommendationToken);
-  }
-
   const productMap = new Map();
   for (const recommendation of recommendations) {
     const productId = recommendation?.product_id ? String(recommendation.product_id) : null;
@@ -191,17 +174,29 @@ function buildProductPerformance(recommendations, purchases, productLookup) {
         product_title: meta.product_title || 'Unknown Product',
         product_handle: meta.product_handle || '',
         total_recommendations: 0,
+        tracked_total_recommendations: 0,
         available_recommendations: 0,
         sold_out_recommendations: 0,
         unavailable_recommendations: 0,
         add_to_cart_total: 0,
+        tracked_recommendation_tokens: new Set(),
+        purchase_tokens: new Set(),
+        revenue_generated: 0,
         sold_out_breakdown_map: new Map(),
       });
     }
 
     const bucket = productMap.get(productId);
     const availabilityStatus = String(recommendation?.availability_status || 'available');
+    const recommendationToken = hasTrackedRecommendationToken(recommendation)
+      ? String(recommendation.recommendation_token)
+      : null;
     bucket.total_recommendations += 1;
+
+    if (recommendationToken) {
+      bucket.tracked_total_recommendations += 1;
+      bucket.tracked_recommendation_tokens.add(recommendationToken);
+    }
 
     if (availabilityStatus === 'sold_out') {
       bucket.sold_out_recommendations += 1;
@@ -215,16 +210,31 @@ function buildProductPerformance(recommendations, purchases, productLookup) {
       continue;
     }
 
+    if (!recommendationToken) {
+      continue;
+    }
+
     bucket.available_recommendations += 1;
     if (recommendation?.added_to_cart_at) {
       bucket.add_to_cart_total += 1;
     }
   }
 
+  for (const purchase of purchases) {
+    const productId = purchase?.product_id ? String(purchase.product_id) : null;
+    const recommendationToken = purchase?.recommendation_token ? String(purchase.recommendation_token) : null;
+    if (!productId || !recommendationToken || !productMap.has(productId)) continue;
+
+    const bucket = productMap.get(productId);
+    if (!bucket.tracked_recommendation_tokens.has(recommendationToken)) continue;
+
+    bucket.purchase_tokens.add(recommendationToken);
+    bucket.revenue_generated += Number(purchase?.revenue_amount || 0);
+  }
+
   return Array.from(productMap.values())
     .map((bucket) => {
-      const purchaseData = productPurchaseMap.get(bucket.product_id);
-      const purchaseTotal = purchaseData ? purchaseData.purchase_tokens.size : 0;
+      const purchaseTotal = bucket.purchase_tokens.size;
       const soldOutBreakdown = Array.from(bucket.sold_out_breakdown_map.entries())
         .map(([size, count]) => ({ size, count }))
         .sort((left, right) => right.count - left.count || String(left.size).localeCompare(String(right.size)));
@@ -234,6 +244,7 @@ function buildProductPerformance(recommendations, purchases, productLookup) {
         product_title: bucket.product_title,
         product_handle: bucket.product_handle,
         total_recommendations: bucket.total_recommendations,
+        tracked_total_recommendations: bucket.tracked_total_recommendations,
         available_recommendations: bucket.available_recommendations,
         sold_out_recommendations: bucket.sold_out_recommendations,
         unavailable_recommendations: bucket.unavailable_recommendations,
@@ -241,7 +252,7 @@ function buildProductPerformance(recommendations, purchases, productLookup) {
         rec_to_add_to_cart_rate: toPercentage(bucket.add_to_cart_total, bucket.available_recommendations),
         purchase_total: purchaseTotal,
         rec_to_purchase_rate: toPercentage(purchaseTotal, bucket.available_recommendations),
-        revenue_generated: Number((purchaseData?.revenue_generated || 0).toFixed(2)),
+        revenue_generated: Number(bucket.revenue_generated.toFixed(2)),
         sold_out_breakdown: soldOutBreakdown,
       };
     })
@@ -263,16 +274,17 @@ async function buildAnalyticsResponse(db, shop, range) {
   ]);
 
   const productPerformance = buildProductPerformance(recommendations, purchases, productLookup);
-  const availableRecommendations = recommendations.filter((item) => String(item?.availability_status || 'available') === 'available');
+  const trackedRecommendations = recommendations.filter(hasTrackedRecommendationToken);
+  const trackedAvailableRecommendations = trackedRecommendations.filter((item) => String(item?.availability_status || 'available') === 'available');
   const soldOutRecommendations = recommendations.filter((item) => String(item?.availability_status || 'available') === 'sold_out');
   const unavailableRecommendations = recommendations.filter((item) => String(item?.availability_status || 'available') === 'size_not_available');
-  const addToCartCount = availableRecommendations.filter((item) => !!item?.added_to_cart_at).length;
+  const addToCartCount = trackedAvailableRecommendations.filter((item) => !!item?.added_to_cart_at).length;
   const purchaseTokenSet = new Set(
     purchases
       .map((item) => item?.recommendation_token ? String(item.recommendation_token) : null)
       .filter(Boolean)
   );
-  const purchasedRecommendationCount = availableRecommendations.filter((item) => item?.recommendation_token && purchaseTokenSet.has(String(item.recommendation_token))).length;
+  const purchasedRecommendationCount = trackedAvailableRecommendations.filter((item) => item?.recommendation_token && purchaseTokenSet.has(String(item.recommendation_token))).length;
   const totalRevenue = Number(
     purchases.reduce((sum, item) => sum + Number(item?.revenue_amount || 0), 0).toFixed(2)
   );
@@ -284,11 +296,12 @@ async function buildAnalyticsResponse(db, shop, range) {
     summary: {
       totalRevenue,
       totalRecommendations: recommendations.length,
-      availableRecommendations: availableRecommendations.length,
+      trackedRecommendations: trackedRecommendations.length,
+      availableRecommendations: trackedAvailableRecommendations.length,
       soldOutRecommendations: soldOutRecommendations.length,
       unavailableRecommendations: unavailableRecommendations.length,
-      recommendationToAddToCartRate: toPercentage(addToCartCount, availableRecommendations.length),
-      recommendationToPurchaseRate: toPercentage(purchasedRecommendationCount, availableRecommendations.length),
+      recommendationToAddToCartRate: toPercentage(addToCartCount, trackedAvailableRecommendations.length),
+      recommendationToPurchaseRate: toPercentage(purchasedRecommendationCount, trackedAvailableRecommendations.length),
       currency: purchases.find((item) => item?.currency)?.currency || 'USD',
     },
     productPerformance,
