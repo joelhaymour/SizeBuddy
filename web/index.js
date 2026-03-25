@@ -116,6 +116,7 @@ app.use(cors({
 
 // Mount app proxy routes BEFORE any authentication middleware
 // This is critical - app proxy routes use signature verification, not session auth
+app.use('/apps/size-buddy', appProxyRouter);
 app.use('/app-proxy', appProxyRouter);
 app.use('/api/proxy', appProxyRouter);
 
@@ -894,7 +895,8 @@ if (process.env.NODE_ENV === "development") {
   app.use("/api/*", (req, res, next) => {
     // req.path is relative to the /api mount, so use originalUrl for the full request path.
     if (req.originalUrl.startsWith('/api/size-recommendations')) {
-      if (!req.query.shop) {
+      const resolvedShop = req.query.shop || req.body?.shop;
+      if (!resolvedShop) {
         return res.status(400).json({ error: "Missing shop parameter" });
       }
       console.log('Skipping auth for size-recommendations endpoint');
@@ -939,7 +941,8 @@ if (process.env.NODE_ENV === "development") {
   app.use("/api/*", (req, res, next) => {
     // req.path is relative to the /api mount, so use originalUrl for the full request path.
     if (req.originalUrl.startsWith('/api/size-recommendations')) {
-      if (!req.query.shop) {
+      const resolvedShop = req.query.shop || req.body?.shop;
+      if (!resolvedShop) {
         return res.status(400).json({ error: "Missing shop parameter" });
       }
       console.log('Skipping auth for size-recommendations endpoint');

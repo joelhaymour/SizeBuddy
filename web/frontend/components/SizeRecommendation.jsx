@@ -763,7 +763,7 @@ export function SizeRecommendation({ shop, host }) {
 
       const url = editingRecommendationId 
         ? `/api/size-recommendations/${editingRecommendationId}?shop=${fullShopDomain}` 
-        : '/api/size-recommendations';
+        : `/api/size-recommendations?shop=${fullShopDomain}`;
 
       const method = editingRecommendationId ? 'PUT' : 'POST';
 
