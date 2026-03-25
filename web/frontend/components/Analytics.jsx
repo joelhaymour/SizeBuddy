@@ -254,7 +254,6 @@ function InsightPanel({ title, subtitle, items, emptyMessage, showAll, onToggleS
 export function Analytics({ shop, host }) {
   const fetch = useAuthenticatedFetch();
   const [isLoading, setIsLoading] = useState(true);
-  const [isResetting, setIsResetting] = useState(false);
   const [error, setError] = useState(null);
   const [selectedDateRange, setSelectedDateRange] = useState('last7days');
   const [searchValue, setSearchValue] = useState('');
@@ -321,35 +320,6 @@ export function Analytics({ shop, host }) {
       fetchAnalyticsData();
     }
   }, [fetchAnalyticsData, host, shop]);
-
-  const handleResetData = useCallback(async () => {
-    if (!window.confirm('Reset all analytics data for this shop? This is intended for testing only.')) {
-      return;
-    }
-
-    try {
-      setIsResetting(true);
-      setError(null);
-      const response = await fetch('/api/analytics/reset', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ shop }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to reset analytics data');
-      }
-
-      await fetchAnalyticsData();
-    } catch (err) {
-      console.error('Error resetting analytics:', err);
-      setError(err.message || 'Failed to reset analytics data');
-    } finally {
-      setIsResetting(false);
-    }
-  }, [fetch, fetchAnalyticsData, shop]);
 
   const summaryCards = useMemo(() => ([
     {
@@ -601,9 +571,6 @@ export function Analytics({ shop, host }) {
                   onChange={setSelectedDateRange}
                 />
               </div>
-              <Button destructive loading={isResetting} onClick={handleResetData}>
-                Reset Data (Testing)
-              </Button>
             </div>
           </div>
         </div>
