@@ -22,6 +22,7 @@ const SCOPES = [
   'read_products',
   'write_customers',
   'read_customers',
+  'read_orders',
   'read_themes',
   'write_themes'
 ];
