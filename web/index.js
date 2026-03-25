@@ -116,6 +116,9 @@ app.use(cors({
 
 // Mount app proxy routes BEFORE any authentication middleware
 // This is critical - app proxy routes use signature verification, not session auth
+// Shopify can forward app proxy requests with the storefront prefix stripped,
+// so mount the router at the root as well as the explicit proxy prefixes.
+app.use(appProxyRouter);
 app.use('/apps/size-buddy', appProxyRouter);
 app.use('/app-proxy', appProxyRouter);
 app.use('/api/proxy', appProxyRouter);
