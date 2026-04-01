@@ -55,8 +55,10 @@ function getDateRange(range) {
       now.setDate(now.getDate() - 365);
       return now;
     case 'last7days':
-    default:
       now.setDate(now.getDate() - 7);
+      return now;
+    default:
+      now.setDate(now.getDate() - 30);
       return now;
   }
 }
@@ -191,6 +193,7 @@ function buildProductPerformance(recommendations, purchases, productLookup) {
     const recommendationToken = hasTrackedRecommendationToken(recommendation)
       ? String(recommendation.recommendation_token)
       : null;
+    const isTrackedRecommendation = Boolean(recommendationToken);
     bucket.total_recommendations += 1;
 
     if (recommendationToken) {
@@ -199,14 +202,18 @@ function buildProductPerformance(recommendations, purchases, productLookup) {
     }
 
     if (availabilityStatus === 'sold_out') {
-      bucket.sold_out_recommendations += 1;
-      const sizeLabel = recommendation?.recommended_size || 'Unknown Size';
-      bucket.sold_out_breakdown_map.set(sizeLabel, (bucket.sold_out_breakdown_map.get(sizeLabel) || 0) + 1);
+      if (isTrackedRecommendation) {
+        bucket.sold_out_recommendations += 1;
+        const sizeLabel = recommendation?.recommended_size || 'Unknown Size';
+        bucket.sold_out_breakdown_map.set(sizeLabel, (bucket.sold_out_breakdown_map.get(sizeLabel) || 0) + 1);
+      }
       continue;
     }
 
     if (availabilityStatus === 'size_not_available') {
-      bucket.unavailable_recommendations += 1;
+      if (isTrackedRecommendation) {
+        bucket.unavailable_recommendations += 1;
+      }
       continue;
     }
 
@@ -276,8 +283,8 @@ async function buildAnalyticsResponse(db, shop, range) {
   const productPerformance = buildProductPerformance(recommendations, purchases, productLookup);
   const trackedRecommendations = recommendations.filter(hasTrackedRecommendationToken);
   const trackedAvailableRecommendations = trackedRecommendations.filter((item) => String(item?.availability_status || 'available') === 'available');
-  const soldOutRecommendations = recommendations.filter((item) => String(item?.availability_status || 'available') === 'sold_out');
-  const unavailableRecommendations = recommendations.filter((item) => String(item?.availability_status || 'available') === 'size_not_available');
+  const trackedSoldOutRecommendations = trackedRecommendations.filter((item) => String(item?.availability_status || 'available') === 'sold_out');
+  const trackedUnavailableRecommendations = trackedRecommendations.filter((item) => String(item?.availability_status || 'available') === 'size_not_available');
   const addToCartCount = trackedAvailableRecommendations.filter((item) => !!item?.added_to_cart_at).length;
   const purchaseTokenSet = new Set(
     purchases
@@ -298,8 +305,8 @@ async function buildAnalyticsResponse(db, shop, range) {
       totalRecommendations: recommendations.length,
       trackedRecommendations: trackedRecommendations.length,
       availableRecommendations: trackedAvailableRecommendations.length,
-      soldOutRecommendations: soldOutRecommendations.length,
-      unavailableRecommendations: unavailableRecommendations.length,
+      soldOutRecommendations: trackedSoldOutRecommendations.length,
+      unavailableRecommendations: trackedUnavailableRecommendations.length,
       recommendationToAddToCartRate: toPercentage(addToCartCount, trackedAvailableRecommendations.length),
       recommendationToPurchaseRate: toPercentage(purchasedRecommendationCount, trackedAvailableRecommendations.length),
       currency: purchases.find((item) => item?.currency)?.currency || 'USD',
@@ -310,7 +317,7 @@ async function buildAnalyticsResponse(db, shop, range) {
 
 router.get('/api/analytics', validateAuthenticatedSession, async (req, res) => {
   try {
-    const { shop, range = 'last7days' } = req.query;
+    const { shop, range = 'last30days' } = req.query;
     if (!shop) {
       return res.status(400).json({ error: 'Missing shop parameter' });
     }
@@ -321,24 +328,6 @@ router.get('/api/analytics', validateAuthenticatedSession, async (req, res) => {
   } catch (error) {
     console.error('Error fetching analytics:', error);
     res.status(500).json({ error: 'Failed to fetch analytics data' });
-  }
-});
-
-router.post('/api/analytics/reset', validateAuthenticatedSession, async (req, res) => {
-  try {
-    const shop = req.body?.shop || req.query?.shop;
-    if (!shop) {
-      return res.status(400).json({ error: 'Missing shop parameter' });
-    }
-
-    const db = await dbPromise;
-    await db.run('DELETE FROM analytics_events WHERE shop = ?', [shop]);
-    await db.run('DELETE FROM size_recommendation_analytics WHERE shop = ?', [shop]);
-    await db.run('DELETE FROM size_buddy_purchase_analytics WHERE shop = ?', [shop]);
-    res.status(200).json({ success: true });
-  } catch (error) {
-    console.error('Error resetting analytics:', error);
-    res.status(500).json({ error: 'Failed to reset analytics data' });
   }
 });
 
@@ -464,7 +453,7 @@ router.post('/api/log-widget-view', async (req, res) => {
 router.get('/api/analytics/product/:productId', validateAuthenticatedSession, async (req, res) => {
   try {
     const { productId } = req.params;
-    const { shop, range = 'last7days' } = req.query;
+    const { shop, range = 'last30days' } = req.query;
     if (!shop) {
       return res.status(400).json({ error: 'Missing shop parameter' });
     }

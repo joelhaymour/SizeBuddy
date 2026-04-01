@@ -722,6 +722,107 @@
         ? window.sizeBuddyCurrentRecommendation[String(productId)] || null
         : null;
     }
+
+    function setNativeProductFormInput(form, inputName, value) {
+      if (!form || !inputName) return;
+      const existingInput = Array.from(form.querySelectorAll('input[type="hidden"]'))
+        .find((input) => input.name === inputName);
+
+      if (value === undefined || value === null || value === '') {
+        if (existingInput) existingInput.remove();
+        return;
+      }
+
+      const input = existingInput || document.createElement('input');
+      if (!existingInput) {
+        input.type = 'hidden';
+        input.name = inputName;
+        form.appendChild(input);
+      }
+
+      input.value = String(value);
+    }
+
+    function clearNativeProductFormAttribution(form) {
+      setNativeProductFormInput(form, 'properties[_size_buddy_recommendation_token]', null);
+      setNativeProductFormInput(form, 'properties[_size_buddy_recommended_size]', null);
+    }
+
+    function getAttributableNativeProductFormContext(form) {
+      const targetForm = form || getProductForm();
+      const context = getCurrentRecommendationContext();
+      if (!targetForm || !context || !context.recommendationToken || !context.recommendedSize) {
+        return null;
+      }
+
+      if (!currentSelectionMatchesRecommendedSize(context.recommendedSize)) {
+        return null;
+      }
+
+      return {
+        chartId: context.chartId || null,
+        productId: String(context.productId || productId),
+        recommendedSize: context.recommendedSize,
+        recommendationToken: context.recommendationToken,
+        shopDomain: context.shopDomain || shopDomain,
+        availabilityStatus: context.availabilityStatus || 'available',
+        variantId: getCurrentVariantIdFromForm() || context.variantId || null
+      };
+    }
+
+    function syncNativeProductFormAttribution(form) {
+      const targetForm = form || getProductForm();
+      if (!targetForm) return null;
+
+      const context = getAttributableNativeProductFormContext(targetForm);
+      if (!context) {
+        clearNativeProductFormAttribution(targetForm);
+        return null;
+      }
+
+      setNativeProductFormInput(targetForm, 'properties[_size_buddy_recommendation_token]', context.recommendationToken);
+      setNativeProductFormInput(targetForm, 'properties[_size_buddy_recommended_size]', context.recommendedSize);
+      setCurrentRecommendationContext(context);
+      return context;
+    }
+
+    function ensureNativeProductFormAttributionTracking() {
+      if (!window.sizeBuddyNativeFormAttributionBound) window.sizeBuddyNativeFormAttributionBound = {};
+      if (window.sizeBuddyNativeFormAttributionBound[String(productId)]) {
+        syncNativeProductFormAttribution();
+        return getProductForm();
+      }
+
+      window.sizeBuddyNativeFormAttributionBound[String(productId)] = true;
+      const syncCurrentFormAttribution = (event) => {
+        const form = getProductForm();
+        if (!form) return;
+        if (event && event.target && !form.contains(event.target)) return;
+        syncNativeProductFormAttribution(form);
+      };
+
+      document.addEventListener('change', syncCurrentFormAttribution, true);
+      document.addEventListener('input', syncCurrentFormAttribution, true);
+      document.addEventListener('submit', (event) => {
+        const form = getProductForm();
+        if (!form || (event.target && event.target !== form)) return;
+
+        const context = syncNativeProductFormAttribution(form);
+        if (!context) return;
+
+        void logAddToCart({
+          shopDomain: context.shopDomain,
+          productId: context.productId,
+          chartId: context.chartId,
+          recommendedSize: context.recommendedSize,
+          recommendationToken: context.recommendationToken,
+          variantId: context.variantId
+        }, { keepalive: true });
+      }, true);
+
+      syncNativeProductFormAttribution();
+      return getProductForm();
+    }
     
     // Helper: add recommended size to cart via AJAX only
     async function addRecommendedSizeToCart(bestSize, buttonEl) {
@@ -758,6 +859,8 @@
           error.code = 'size_not_available';
           throw error;
         }
+
+        syncNativeProductFormAttribution();
         
         const resp = await fetch('/cart/add.js', {
           method: 'POST',
@@ -1097,6 +1200,7 @@
         
         // Initialize product-specific recommendation context tracker
         if (!window.sizeBuddyCurrentRecommendation) window.sizeBuddyCurrentRecommendation = {};
+        ensureNativeProductFormAttributionTracking();
         
         // Extract measurement fields and determine min/max values for each
         const measurements = [];
@@ -2564,7 +2668,7 @@
         variant_id: analyticsOptions.variantId || null
       };
       if (!window.sizeBuddyCurrentRecommendation) window.sizeBuddyCurrentRecommendation = {};
-      window.sizeBuddyCurrentRecommendation[String(productId)] = {
+      setCurrentRecommendationContext({
         chartId: chartId,
         productId: String(productId),
         recommendedSize: recommendedSize,
@@ -2572,7 +2676,8 @@
         shopDomain: shopDomain,
         availabilityStatus: payload.availability_status,
         variantId: payload.variant_id
-      };
+      });
+      ensureNativeProductFormAttributionTracking();
       console.log('logSizeRecommendation called with:', { chartId, recommendedSize, measurements, shopDomain, productId, recommendationToken });
       const backendBase = window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
       const backendUrl = (backendBase || '').replace(/\/$/, '');
@@ -2625,9 +2730,10 @@
     }
   }
 
-  async function logAddToCart({ shopDomain, productId, chartId, recommendedSize, recommendationToken, variantId }) {
+  async function logAddToCart({ shopDomain, productId, chartId, recommendedSize, recommendationToken, variantId }, options) {
     const backendBase = window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
     const backendUrl = (backendBase || '').replace(/\/$/, '');
+    const requestOptions = options || {};
     const payload = {
       shop: shopDomain,
       recommendation_token: recommendationToken,
@@ -2640,6 +2746,7 @@
     try {
       const response = await fetch(`${backendUrl}/api/log-add-to-cart`, {
         method: 'POST',
+        keepalive: Boolean(requestOptions.keepalive),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -2659,6 +2766,7 @@
     try {
       const response = await fetch(`https://${shopDomain}/apps/size-buddy/api/proxy/log-add-to-cart`, {
         method: 'POST',
+        keepalive: Boolean(requestOptions.keepalive),
         headers: {
           'Content-Type': 'application/json',
         },
