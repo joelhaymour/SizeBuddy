@@ -755,7 +755,8 @@
         return null;
       }
 
-      if (!currentSelectionMatchesRecommendedSize(context.recommendedSize)) {
+      const contextProductId = context.productId ? String(context.productId) : null;
+      if (contextProductId && contextProductId !== String(productId)) {
         return null;
       }
 
