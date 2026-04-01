@@ -2668,7 +2668,7 @@
         variant_id: analyticsOptions.variantId || null
       };
       if (!window.sizeBuddyCurrentRecommendation) window.sizeBuddyCurrentRecommendation = {};
-      setCurrentRecommendationContext({
+      window.sizeBuddyCurrentRecommendation[String(productId)] = {
         chartId: chartId,
         productId: String(productId),
         recommendedSize: recommendedSize,
@@ -2676,8 +2676,7 @@
         shopDomain: shopDomain,
         availabilityStatus: payload.availability_status,
         variantId: payload.variant_id
-      });
-      ensureNativeProductFormAttributionTracking();
+      };
       console.log('logSizeRecommendation called with:', { chartId, recommendedSize, measurements, shopDomain, productId, recommendationToken });
       const backendBase = window.SIZE_BUDDY_HOST || 'https://sizebuddy.onrender.com';
       const backendUrl = (backendBase || '').replace(/\/$/, '');
