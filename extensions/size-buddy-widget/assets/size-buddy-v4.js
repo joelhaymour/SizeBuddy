@@ -824,6 +824,202 @@
       syncNativeProductFormAttribution();
       return getProductForm();
     }
+
+    function getCurrentProductVariantIdSet() {
+      const variants = getProductVariants();
+      return new Set(
+        variants
+          .map((variant) => variant && variant.id ? String(variant.id) : null)
+          .filter(Boolean)
+      );
+    }
+
+    function getSameProductAttributionContext() {
+      const context = getCurrentRecommendationContext();
+      if (!context || !context.recommendationToken || !context.recommendedSize) return null;
+      const contextProductId = context.productId ? String(context.productId) : null;
+      if (contextProductId && contextProductId !== String(productId)) return null;
+
+      return {
+        chartId: context.chartId || null,
+        productId: String(context.productId || productId),
+        recommendedSize: context.recommendedSize,
+        recommendationToken: context.recommendationToken,
+        shopDomain: context.shopDomain || shopDomain,
+        availabilityStatus: context.availabilityStatus || 'available',
+        variantId: context.variantId || getCurrentVariantIdFromForm() || null
+      };
+    }
+
+    function extractVariantIdFromCartAddBody(body) {
+      if (!body) return null;
+
+      if (body instanceof FormData) {
+        return body.get('id') || body.get('items[0][id]') || null;
+      }
+
+      if (body instanceof URLSearchParams) {
+        return body.get('id') || body.get('items[0][id]') || null;
+      }
+
+      if (typeof body === 'string') {
+        try {
+          const parsed = JSON.parse(body);
+          if (parsed && parsed.id) return parsed.id;
+          if (Array.isArray(parsed && parsed.items) && parsed.items[0] && parsed.items[0].id) return parsed.items[0].id;
+        } catch (_error) {
+          const params = new URLSearchParams(body);
+          return params.get('id') || params.get('items[0][id]') || null;
+        }
+      }
+
+      if (typeof body === 'object') {
+        if (body.id) return body.id;
+        if (Array.isArray(body.items) && body.items[0] && body.items[0].id) return body.items[0].id;
+      }
+
+      return null;
+    }
+
+    function injectAttributionIntoCartAddBody(body, context) {
+      if (!body || !context) return { body, didInject: false, variantId: null };
+
+      const variantId = extractVariantIdFromCartAddBody(body);
+      const validVariantIds = getCurrentProductVariantIdSet();
+      if (variantId && validVariantIds.size && !validVariantIds.has(String(variantId))) {
+        return { body, didInject: false, variantId: String(variantId) };
+      }
+
+      if (body instanceof FormData) {
+        const existingToken = body.get('properties[_size_buddy_recommendation_token]');
+        if (existingToken) {
+          return { body, didInject: false, variantId: variantId ? String(variantId) : null };
+        }
+
+        body.set('properties[_size_buddy_recommendation_token]', context.recommendationToken);
+        body.set('properties[_size_buddy_recommended_size]', context.recommendedSize);
+        return { body, didInject: true, variantId: variantId ? String(variantId) : null };
+      }
+
+      if (body instanceof URLSearchParams) {
+        const existingToken = body.get('properties[_size_buddy_recommendation_token]');
+        if (existingToken) {
+          return { body, didInject: false, variantId: variantId ? String(variantId) : null };
+        }
+
+        body.set('properties[_size_buddy_recommendation_token]', context.recommendationToken);
+        body.set('properties[_size_buddy_recommended_size]', context.recommendedSize);
+        return { body, didInject: true, variantId: variantId ? String(variantId) : null };
+      }
+
+      if (typeof body === 'string') {
+        try {
+          const parsed = JSON.parse(body);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.properties && parsed.properties._size_buddy_recommendation_token) {
+              return { body, didInject: false, variantId: variantId ? String(variantId) : null };
+            }
+
+            const nextBody = JSON.stringify({
+              ...parsed,
+              properties: {
+                ...(parsed.properties || {}),
+                _size_buddy_recommendation_token: context.recommendationToken,
+                _size_buddy_recommended_size: context.recommendedSize
+              }
+            });
+            return { body: nextBody, didInject: true, variantId: variantId ? String(variantId) : null };
+          }
+        } catch (_error) {
+          const params = new URLSearchParams(body);
+          if (params.get('properties[_size_buddy_recommendation_token]')) {
+            return { body, didInject: false, variantId: variantId ? String(variantId) : null };
+          }
+
+          params.set('properties[_size_buddy_recommendation_token]', context.recommendationToken);
+          params.set('properties[_size_buddy_recommended_size]', context.recommendedSize);
+          return { body: params.toString(), didInject: true, variantId: variantId ? String(variantId) : null };
+        }
+      }
+
+      if (typeof body === 'object') {
+        if (body.properties && body.properties._size_buddy_recommendation_token) {
+          return { body, didInject: false, variantId: variantId ? String(variantId) : null };
+        }
+
+        return {
+          body: {
+            ...body,
+            properties: {
+              ...(body.properties || {}),
+              _size_buddy_recommendation_token: context.recommendationToken,
+              _size_buddy_recommended_size: context.recommendedSize
+            }
+          },
+          didInject: true,
+          variantId: variantId ? String(variantId) : null
+        };
+      }
+
+      return { body, didInject: false, variantId: variantId ? String(variantId) : null };
+    }
+
+    function isCartAddRequest(input) {
+      const urlValue = typeof input === 'string'
+        ? input
+        : input && typeof input.url === 'string'
+          ? input.url
+          : '';
+
+      return /\/cart\/add(?:\.js)?(?:[?#]|$)/.test(urlValue);
+    }
+
+    function ensureCartRequestAttributionTracking() {
+      if (!window.sizeBuddyCartRequestAttributionBound) window.sizeBuddyCartRequestAttributionBound = {};
+      if (window.sizeBuddyCartRequestAttributionBound[String(productId)]) return;
+      if (typeof window.fetch !== 'function') return;
+
+      window.sizeBuddyCartRequestAttributionBound[String(productId)] = true;
+      const originalFetch = window.fetch.bind(window);
+
+      window.fetch = async function(input, init) {
+        let nextInit = init ? { ...init } : {};
+        let attributionContext = null;
+        let injectedVariantId = null;
+        let didInjectAttribution = false;
+
+        if (isCartAddRequest(input)) {
+          const context = getSameProductAttributionContext();
+          const bodySource = nextInit.body;
+          if (context && bodySource) {
+            const injected = injectAttributionIntoCartAddBody(bodySource, context);
+            nextInit.body = injected.body;
+            injectedVariantId = injected.variantId;
+            didInjectAttribution = injected.didInject;
+            attributionContext = context;
+          }
+        }
+
+        const response = await originalFetch(input, nextInit);
+
+        if (didInjectAttribution && attributionContext && response && response.ok) {
+          try {
+            void logAddToCart({
+              shopDomain: attributionContext.shopDomain,
+              productId: attributionContext.productId,
+              chartId: attributionContext.chartId,
+              recommendedSize: attributionContext.recommendedSize,
+              recommendationToken: attributionContext.recommendationToken,
+              variantId: injectedVariantId || attributionContext.variantId || null
+            });
+          } catch (analyticsError) {
+            console.error('Size Buddy: failed to log same-product add to cart analytics', analyticsError);
+          }
+        }
+
+        return response;
+      };
+    }
     
     // Helper: add recommended size to cart via AJAX only
     async function addRecommendedSizeToCart(bestSize, buttonEl) {
@@ -1202,6 +1398,7 @@
         // Initialize product-specific recommendation context tracker
         if (!window.sizeBuddyCurrentRecommendation) window.sizeBuddyCurrentRecommendation = {};
         ensureNativeProductFormAttributionTracking();
+        ensureCartRequestAttributionTracking();
         
         // Extract measurement fields and determine min/max values for each
         const measurements = [];
