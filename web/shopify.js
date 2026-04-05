@@ -4,6 +4,7 @@ import { SQLiteSessionStorage } from "@shopify/shopify-app-session-storage-sqlit
 import { RedisSessionStorage } from "@shopify/shopify-app-session-storage-redis";
 import { restResources } from "@shopify/shopify-api/rest/admin/2025-01";
 import dotenv from 'dotenv';
+import { ensureBuyNowPixelInstalled } from "./utils/buyNowPixel.js";
 
 // Load environment variables
 dotenv.config();
@@ -23,8 +24,10 @@ const SCOPES = [
   'write_customers',
   'read_customers',
   'read_orders',
+  'read_customer_events',
   'read_themes',
-  'write_themes'
+  'write_themes',
+  'write_pixels'
 ];
 
 console.log('Using scopes:', SCOPES);
@@ -87,6 +90,11 @@ const validateAuthenticatedSession = async (req, res, next) => {
   try {
     const session = await shopify.validateAuthenticatedSession(req, res);
     res.locals.shopify = { session };
+    try {
+      await ensureBuyNowPixelInstalled(shopify, session);
+    } catch (pixelError) {
+      console.error('Failed to ensure Buy it now pixel during session validation:', pixelError);
+    }
     next();
   } catch (error) {
     if (error instanceof Error) {

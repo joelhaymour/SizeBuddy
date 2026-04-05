@@ -1,0 +1,21 @@
+name = "size-buddy-buy-now-pixel"
+type = "web_pixel_extension"
+
+[customer_privacy]
+analytics = true
+marketing = false
+preferences = false
+sale_of_data = "disabled"
+
+[settings]
+type = "object"
+
+[settings.fields.backendUrl]
+name = "Backend URL"
+description = "The Size Buddy backend base URL."
+type = "single_line_text_field"
+
+[settings.fields.shopDomain]
+name = "Shop domain"
+description = "The permanent Shopify shop domain."
+type = "single_line_text_field"

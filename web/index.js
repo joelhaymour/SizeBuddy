@@ -20,12 +20,14 @@ import shopify from "./shopify.js";
 import productCreator from "./product-creator.js";
 import CustomWebhookHandlers from "./webhooks.js";
 import analyticsRouter from "./routes/analytics.js";
+import pixelAttributionRouter from "./routes/pixel-attribution.js";
 import sizeRecommendationsRouter from "./routes/size-recommendations.js";
 import widgetCustomizationRouter from "./routes/widget-customization.js";
 import billingRouter from "./routes/billing.js";
 import appProxyRouter from "./routes/app-proxy.js";
 import GDPRWebhookHandlers from "./gdpr.js";
 import { getDb } from './db.js';
+import { ensureBuyNowPixelInstalled } from "./utils/buyNowPixel.js";
 
 
 // Load environment variables
@@ -126,6 +128,7 @@ app.use('/api/proxy', appProxyRouter);
 // Add analytics routes BEFORE authentication middleware
 // This allows widget view logging to work without authentication
 app.use(analyticsRouter);
+app.use(pixelAttributionRouter);
 app.use(billingRouter);
 
 // Add a route to serve the widget script directly - NO AUTH REQUIRED
@@ -843,7 +846,22 @@ if (process.env.NODE_ENV === 'development') {
 
 // Set up Shopify authentication and webhook handling
 app.get("/api/auth", shopify.auth.begin());
-app.get("/api/auth/callback", shopify.auth.callback(), shopify.redirectToShopifyOrAppRoot());
+app.get(
+  "/api/auth/callback",
+  shopify.auth.callback(),
+  async (_req, res, next) => {
+    try {
+      const session = res.locals.shopify?.session;
+      if (session) {
+        await ensureBuyNowPixelInstalled(shopify, session);
+      }
+    } catch (error) {
+      console.error("Failed to ensure Buy it now pixel after auth callback:", error);
+    }
+    next();
+  },
+  shopify.redirectToShopifyOrAppRoot()
+);
 app.post(shopify.config.webhooks.path, shopify.processWebhooks({ webhookHandlers: CustomWebhookHandlers }));
 
 // Add a permissive preflight handler for our API routes (Shopify OAuth redirects trigger OPTIONS)

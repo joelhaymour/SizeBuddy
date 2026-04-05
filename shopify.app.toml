@@ -22,7 +22,7 @@ uri = "https://sizebuddy.onrender.com/api/webhooks"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products read_products write_customers read_customers read_themes write_themes read_orders"
+scopes = "write_products read_products write_customers read_customers read_themes write_themes read_orders read_customer_events write_pixels"
 
 [auth]
 redirect_urls = [

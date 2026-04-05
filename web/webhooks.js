@@ -1,6 +1,10 @@
 import { DeliveryMethod } from "@shopify/shopify-api";
 import PrivacyWebhookHandlers from "./privacy.js";
 import { getDb } from './db.js';
+import {
+  clearPendingPixelPurchase,
+  getPendingPixelPurchase,
+} from "./utils/buyNowPixel.js";
 
 function getLineItemProperty(lineItem, key) {
   const props = lineItem?.properties;
@@ -20,6 +24,60 @@ function getLineItemRevenue(lineItem) {
   const totalDiscount = Number(lineItem?.total_discount || 0);
   const raw = (price * quantity) - totalDiscount;
   return Number.isFinite(raw) ? Math.max(0, Number(raw.toFixed(2))) : 0;
+}
+
+async function buildAttributedItem(payload, lineItem, shop) {
+  const orderId = String(payload?.id || '');
+  const productId = lineItem?.product_id ? String(lineItem.product_id) : null;
+  const variantId = lineItem?.variant_id ? String(lineItem.variant_id) : null;
+  const recommendationToken = getLineItemProperty(lineItem, '_size_buddy_recommendation_token');
+
+  if (recommendationToken) {
+    return {
+      orderId,
+      orderName: payload?.name || payload?.order_number || null,
+      lineItemId: String(lineItem?.id || `${payload?.id || 'order'}-${lineItem?.variant_id || lineItem?.product_id || Math.random()}`),
+      recommendationToken,
+      productId,
+      variantId,
+      recommendedSize: getLineItemProperty(lineItem, '_size_buddy_recommended_size') || null,
+      quantity: Number(lineItem?.quantity || 1),
+      revenueAmount: getLineItemRevenue(lineItem),
+      currency: payload?.currency || null,
+      usedPendingPixelFallback: false,
+      pendingVariantId: null,
+    };
+  }
+
+  if (!orderId || !productId) {
+    return null;
+  }
+
+  const pendingPixelPurchase = await getPendingPixelPurchase({
+    shop,
+    orderId,
+    productId,
+    variantId,
+  });
+
+  if (!pendingPixelPurchase?.recommendation_token) {
+    return null;
+  }
+
+  return {
+    orderId,
+    orderName: payload?.name || payload?.order_number || null,
+    lineItemId: String(lineItem?.id || `${payload?.id || 'order'}-${lineItem?.variant_id || lineItem?.product_id || Math.random()}`),
+    recommendationToken: pendingPixelPurchase.recommendation_token,
+    productId,
+    variantId,
+    recommendedSize: pendingPixelPurchase.recommended_size || null,
+    quantity: Number(lineItem?.quantity || 1),
+    revenueAmount: getLineItemRevenue(lineItem),
+    currency: payload?.currency || null,
+    usedPendingPixelFallback: true,
+    pendingVariantId: pendingPixelPurchase.variant_id || "",
+  };
 }
 
 const CustomWebhookHandlers = {
@@ -117,24 +175,13 @@ const CustomWebhookHandlers = {
         const lineItems = Array.isArray(payload?.line_items) ? payload.line_items : [];
         if (!lineItems.length) return;
 
-        const attributedItems = lineItems
-          .map((lineItem) => {
-            const recommendationToken = getLineItemProperty(lineItem, '_size_buddy_recommendation_token');
-            if (!recommendationToken) return null;
-            return {
-              orderId: String(payload?.id || ''),
-              orderName: payload?.name || payload?.order_number || null,
-              lineItemId: String(lineItem?.id || `${payload?.id || 'order'}-${lineItem?.variant_id || lineItem?.product_id || Math.random()}`),
-              recommendationToken,
-              productId: lineItem?.product_id ? String(lineItem.product_id) : null,
-              variantId: lineItem?.variant_id ? String(lineItem.variant_id) : null,
-              recommendedSize: getLineItemProperty(lineItem, '_size_buddy_recommended_size') || null,
-              quantity: Number(lineItem?.quantity || 1),
-              revenueAmount: getLineItemRevenue(lineItem),
-              currency: payload?.currency || null,
-            };
-          })
-          .filter(Boolean);
+        const attributedItems = [];
+        for (const lineItem of lineItems) {
+          const attributedItem = await buildAttributedItem(payload, lineItem, shop);
+          if (attributedItem) {
+            attributedItems.push(attributedItem);
+          }
+        }
 
         if (!attributedItems.length) return;
 
@@ -159,6 +206,15 @@ const CustomWebhookHandlers = {
               item.currency,
             ]
           );
+
+          if (item.usedPendingPixelFallback) {
+            await clearPendingPixelPurchase({
+              shop,
+              orderId: item.orderId,
+              productId: item.productId,
+              variantId: item.pendingVariantId,
+            });
+          }
         }
       } catch (e) {
         console.error('ORDERS_CREATE handler error:', e);

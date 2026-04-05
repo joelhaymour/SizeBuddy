@@ -2914,11 +2914,32 @@
           });
           if (response.ok) {
             console.log('Successfully logged recommendation to app proxy');
+            logSuccess = true;
           } else {
             console.error('Failed to log recommendation to app proxy:', response.status, await response.text());
           }
         } catch (error) {
           console.error('Error logging recommendation to app proxy:', error);
+        }
+      }
+
+      if (
+        logSuccess &&
+        window.Shopify &&
+        window.Shopify.analytics &&
+        typeof window.Shopify.analytics.publish === 'function'
+      ) {
+        try {
+          window.Shopify.analytics.publish('size_buddy:recommendation_logged', {
+            chartId: chartId,
+            productId: String(productId),
+            recommendedSize: recommendedSize,
+            recommendationToken: recommendationToken,
+            variantId: payload.variant_id || null,
+            availabilityStatus: payload.availability_status
+          });
+        } catch (publishError) {
+          console.error('Failed to publish recommendation customer event:', publishError);
         }
       }
     } catch (error) {
