@@ -1,5 +1,6 @@
 name = "size-buddy-buy-now-pixel"
 type = "web_pixel_extension"
+runtime_context = "strict"
 
 [customer_privacy]
 analytics = true
