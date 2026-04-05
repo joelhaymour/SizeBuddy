@@ -74,6 +74,7 @@ register(({ analytics, settings }) => {
   analytics.subscribe("checkout_completed", async (event) => {
     const orderId = normalizeId(event?.data?.checkout?.order?.id);
     const lineItems = Array.isArray(event?.data?.checkout?.lineItems) ? event.data.checkout.lineItems : [];
+    const checkoutCurrency = normalizeText(event?.data?.checkout?.currencyCode) || null;
 
     if (!orderId || !lineItems.length || !event?.clientId) {
       return;
@@ -81,6 +82,7 @@ register(({ analytics, settings }) => {
 
     const payloadLineItems = lineItems
       .map((lineItem) => ({
+        line_item_id: normalizeId(lineItem?.id) || null,
         product_id: normalizeId(
           lineItem?.product?.id ||
           lineItem?.variant?.product?.id ||
@@ -91,6 +93,9 @@ register(({ analytics, settings }) => {
           lineItem?.merchandise?.id
         ) || null,
         recommendation_token: getLineItemProperty(lineItem, "_size_buddy_recommendation_token") || null,
+        quantity: typeof lineItem?.quantity === "number" ? lineItem.quantity : 1,
+        revenue_amount: lineItem?.finalLinePrice?.amount ?? null,
+        currency: normalizeText(lineItem?.finalLinePrice?.currencyCode) || checkoutCurrency,
       }))
       .filter((lineItem) => lineItem.product_id);
 
@@ -103,6 +108,8 @@ register(({ analytics, settings }) => {
         shop: shopDomain,
         client_id: event.clientId,
         order_id: orderId,
+        order_name: normalizeText(event?.data?.checkout?.order?.name) || null,
+        currency: checkoutCurrency,
         line_items: payloadLineItems,
       });
     } catch (_error) {

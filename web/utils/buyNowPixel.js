@@ -24,6 +24,18 @@ function normalizeId(value) {
   return match ? match[1] : text;
 }
 
+function normalizeMoneyAmount(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 0;
+  return Math.max(0, Number(amount.toFixed(2)));
+}
+
+function normalizeQuantity(value) {
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity) || quantity <= 0) return 1;
+  return Math.round(quantity);
+}
+
 async function pruneBuyNowPixelState(db) {
   const staleRecommendationCutoff = new Date(Date.now() - STALE_RECOMMENDATION_WINDOW_MS).toISOString();
   const stalePendingPurchaseCutoff = new Date(Date.now() - STALE_PENDING_PURCHASE_WINDOW_MS).toISOString();
@@ -51,6 +63,37 @@ async function upsertShopPixelRecord(db, shop, webPixelId) {
        web_pixel_id = excluded.web_pixel_id,
        updated_at = excluded.updated_at`,
     [shop, webPixelId, timestamp, timestamp]
+  );
+}
+
+async function getAttributablePixelRecommendation(db, {
+  shop,
+  clientId,
+  productId,
+  recommendationCutoff,
+}) {
+  return db.get(
+    `SELECT recommendations.recommendation_token, recommendations.recommended_size
+     FROM size_buddy_pixel_recommendations AS recommendations
+     WHERE recommendations.shop = ?
+       AND recommendations.client_id = ?
+       AND recommendations.product_id = ?
+       AND recommendations.created_at >= ?
+       AND NOT EXISTS (
+         SELECT 1
+         FROM size_buddy_purchase_analytics AS purchases
+         WHERE purchases.shop = ?
+           AND purchases.recommendation_token = recommendations.recommendation_token
+       )
+     ORDER BY recommendations.created_at DESC
+     LIMIT 1`,
+    [
+      shop,
+      clientId,
+      productId,
+      recommendationCutoff,
+      shop,
+    ]
   );
 }
 
@@ -233,6 +276,97 @@ export async function recordPixelRecommendation({
   return true;
 }
 
+export async function recordPixelCheckoutPurchases({
+  shop,
+  clientId,
+  orderId,
+  orderName,
+  currency,
+  lineItems,
+}) {
+  const normalizedShop = normalizeText(shop);
+  const normalizedClientId = normalizeText(clientId);
+  const normalizedOrderId = normalizeId(orderId);
+  const normalizedOrderName = normalizeText(orderName);
+  const normalizedCurrency = normalizeText(currency);
+  const normalizedLineItems = Array.isArray(lineItems) ? lineItems : [];
+
+  if (!normalizedShop || !normalizedClientId || !normalizedOrderId || normalizedLineItems.length === 0) {
+    return [];
+  }
+
+  await initializeBuyNowPixelTables();
+  const db = await getDb();
+  await pruneBuyNowPixelState(db);
+
+  const recommendationCutoff = new Date(Date.now() - PIXEL_RECOMMENDATION_WINDOW_MS).toISOString();
+  const matchedItems = [];
+
+  for (let index = 0; index < normalizedLineItems.length; index += 1) {
+    const lineItem = normalizedLineItems[index];
+    const normalizedProductId = normalizeId(lineItem?.productId);
+    const normalizedVariantId = normalizeId(lineItem?.variantId);
+    const recommendationTokenFromProperties = normalizeText(lineItem?.recommendationToken);
+
+    if (!normalizedProductId || recommendationTokenFromProperties) {
+      continue;
+    }
+
+    const recommendation = await getAttributablePixelRecommendation(db, {
+      shop: normalizedShop,
+      clientId: normalizedClientId,
+      productId: normalizedProductId,
+      recommendationCutoff,
+    });
+
+    if (!recommendation?.recommendation_token) {
+      continue;
+    }
+
+    const normalizedLineItemId = normalizeId(lineItem?.lineItemId) || `pixel-${normalizedOrderId}-${normalizedProductId}-${normalizedVariantId || "na"}-${index}`;
+    const quantity = normalizeQuantity(lineItem?.quantity);
+    const revenueAmount = normalizeMoneyAmount(lineItem?.revenueAmount);
+    const lineItemCurrency = normalizeText(lineItem?.currency) || normalizedCurrency || null;
+
+    await db.run(
+      `INSERT INTO size_buddy_purchase_analytics
+       (shop, order_id, order_name, line_item_id, recommendation_token, product_id, variant_id, recommended_size, quantity, revenue_amount, currency, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(order_id, line_item_id) DO NOTHING`,
+      [
+        normalizedShop,
+        normalizedOrderId,
+        normalizedOrderName || null,
+        normalizedLineItemId,
+        recommendation.recommendation_token,
+        normalizedProductId,
+        normalizedVariantId || null,
+        recommendation.recommended_size || null,
+        quantity,
+        revenueAmount,
+        lineItemCurrency,
+      ]
+    );
+
+    await clearPendingPixelPurchase({
+      shop: normalizedShop,
+      orderId: normalizedOrderId,
+      productId: normalizedProductId,
+      variantId: normalizedVariantId,
+    });
+
+    matchedItems.push({
+      orderId: normalizedOrderId,
+      lineItemId: normalizedLineItemId,
+      productId: normalizedProductId,
+      variantId: normalizedVariantId || "",
+      recommendationToken: recommendation.recommendation_token,
+    });
+  }
+
+  return matchedItems;
+}
+
 export async function recordPendingPixelCheckout({
   shop,
   clientId,
@@ -264,29 +398,12 @@ export async function recordPendingPixelCheckout({
       continue;
     }
 
-    const recommendation = await db.get(
-      `SELECT recommendations.recommendation_token, recommendations.recommended_size
-       FROM size_buddy_pixel_recommendations AS recommendations
-       WHERE recommendations.shop = ?
-         AND recommendations.client_id = ?
-         AND recommendations.product_id = ?
-         AND recommendations.created_at >= ?
-         AND NOT EXISTS (
-           SELECT 1
-           FROM size_buddy_purchase_analytics AS purchases
-           WHERE purchases.shop = ?
-             AND purchases.recommendation_token = recommendations.recommendation_token
-         )
-       ORDER BY recommendations.created_at DESC
-       LIMIT 1`,
-      [
-        normalizedShop,
-        normalizedClientId,
-        normalizedProductId,
-        recommendationCutoff,
-        normalizedShop,
-      ]
-    );
+    const recommendation = await getAttributablePixelRecommendation(db, {
+      shop: normalizedShop,
+      clientId: normalizedClientId,
+      productId: normalizedProductId,
+      recommendationCutoff,
+    });
 
     if (!recommendation?.recommendation_token) {
       continue;

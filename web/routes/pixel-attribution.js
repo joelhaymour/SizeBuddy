@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   initializeBuyNowPixelTables,
-  recordPendingPixelCheckout,
+  recordPixelCheckoutPurchases,
   recordPixelRecommendation,
 } from "../utils/buyNowPixel.js";
 
@@ -46,6 +46,8 @@ router.post("/api/pixel/checkout-completed", async (req, res) => {
       shop,
       client_id: clientId,
       order_id: orderId,
+      order_name: orderName,
+      currency,
       line_items: lineItems,
     } = req.body || {};
 
@@ -53,14 +55,20 @@ router.post("/api/pixel/checkout-completed", async (req, res) => {
       return res.status(400).json({ error: "Missing required parameters" });
     }
 
-    const matchedItems = await recordPendingPixelCheckout({
+    const matchedItems = await recordPixelCheckoutPurchases({
       shop,
       clientId,
       orderId,
+      orderName,
+      currency,
       lineItems: lineItems.map((lineItem) => ({
+        lineItemId: lineItem?.line_item_id,
         productId: lineItem?.product_id,
         variantId: lineItem?.variant_id,
         recommendationToken: lineItem?.recommendation_token,
+        quantity: lineItem?.quantity,
+        revenueAmount: lineItem?.revenue_amount,
+        currency: lineItem?.currency,
       })),
     });
 
