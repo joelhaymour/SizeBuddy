@@ -85,24 +85,18 @@ console.log('Auth Path:', shopify.config.auth.path);
 console.log('Callback Path:', shopify.config.auth.callbackPath);
 console.log('Configured Scopes:', shopify.api.config.scopes);
 
-// Add session validation middleware
-const validateAuthenticatedSession = async (req, res, next) => {
-  try {
-    const session = await shopify.validateAuthenticatedSession(req, res);
-    res.locals.shopify = { session };
+// Wrap Shopify's built-in session middleware so the session is populated
+// in res.locals before we try to reconcile the Buy it now app pixel.
+const validateAuthenticatedSession = (req, res, next) => {
+  return shopify.validateAuthenticatedSession()(req, res, async () => {
+    const session = res.locals.shopify?.session;
     try {
       await ensureBuyNowPixelInstalled(shopify, session);
     } catch (pixelError) {
       console.error('Failed to ensure Buy it now pixel during session validation:', pixelError);
     }
     next();
-  } catch (error) {
-    if (error instanceof Error) {
-      res.status(401).send(error.message);
-    } else {
-      res.status(401).send('Unauthorized');
-    }
-  }
+  });
 };
 
 export { validateAuthenticatedSession };
