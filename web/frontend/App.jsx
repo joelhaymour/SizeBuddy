@@ -1,7 +1,9 @@
 import { BrowserRouter } from "react-router-dom";
 import { NavigationMenu } from "@shopify/app-bridge-react";
 import { Provider } from "@shopify/app-bridge-react";
+import { useEffect, useRef } from "react";
 import Routes from "./Routes";
+import { useSizeBuddyFetch } from "./utils/useSizeBuddyFetch";
 
 import {
   QueryProvider,
@@ -34,6 +36,46 @@ const config = {
   forceRedirect: true
 };
 
+function PixelConnectionBootstrap({ shopDomain }) {
+  const fetch = useSizeBuddyFetch();
+  const attemptedShopRef = useRef(null);
+
+  useEffect(() => {
+    if (!shopDomain || attemptedShopRef.current === shopDomain) {
+      return;
+    }
+
+    attemptedShopRef.current = shopDomain;
+    let cancelled = false;
+
+    fetch(`/api/pixel/connect?shop=${encodeURIComponent(shopDomain)}`, {
+      method: "POST",
+    })
+      .then(async (response) => {
+        if (cancelled) return;
+
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          console.error("Failed to connect Size Buddy pixel:", response.status, payload);
+          return;
+        }
+
+        console.log("Size Buddy pixel connection result:", payload);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error("Error connecting Size Buddy pixel:", error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetch, shopDomain]);
+
+  return null;
+}
+
 export default function App() {
   // Any .tsx or .jsx files in /pages will become a route
   // See documentation for <Routes /> for more info
@@ -58,6 +100,7 @@ export default function App() {
       <BrowserRouter>
         <Provider config={config}>
           <QueryProvider>
+            <PixelConnectionBootstrap shopDomain={shop} />
             <NavigationMenu
               navigationLinks={[
                 {

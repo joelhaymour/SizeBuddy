@@ -66,6 +66,61 @@ async function upsertShopPixelRecord(db, shop, webPixelId) {
   );
 }
 
+async function createBuyNowPixel(gqlClient, settings) {
+  const response = await withShopifyRateLimit(() =>
+    gqlClient.request(
+      `#graphql
+        mutation CreateSizeBuddyBuyNowPixel($settings: JSON!) {
+          webPixelCreate(webPixel: { settings: $settings }) {
+            userErrors {
+              field
+              message
+              code
+            }
+            webPixel {
+              id
+            }
+          }
+        }
+      `,
+      {
+        variables: { settings },
+      }
+    )
+  );
+
+  return response?.data?.webPixelCreate || null;
+}
+
+async function updateBuyNowPixel(gqlClient, webPixelId, settings) {
+  const response = await withShopifyRateLimit(() =>
+    gqlClient.request(
+      `#graphql
+        mutation UpdateSizeBuddyBuyNowPixel($id: ID!, $settings: JSON!) {
+          webPixelUpdate(id: $id, webPixel: { settings: $settings }) {
+            userErrors {
+              field
+              message
+              code
+            }
+            webPixel {
+              id
+            }
+          }
+        }
+      `,
+      {
+        variables: {
+          id: webPixelId,
+          settings,
+        },
+      }
+    )
+  );
+
+  return response?.data?.webPixelUpdate || null;
+}
+
 async function getAttributablePixelRecommendation(db, {
   shop,
   clientId,
@@ -159,12 +214,20 @@ export async function initializeBuyNowPixelTables() {
   return initializationPromise;
 }
 
-export async function ensureBuyNowPixelInstalled(shopify, session) {
+export async function syncBuyNowPixelConnection(shopify, session, options = {}) {
+  const force = Boolean(options?.force);
   const shop = normalizeText(session?.shop);
   const backendUrl = normalizeText(process.env.HOST).replace(/\/$/, "");
 
   if (!shop || !backendUrl || !session?.accessToken) {
-    return null;
+    return {
+      ok: false,
+      action: "skipped",
+      shop,
+      webPixelId: null,
+      userErrors: [],
+      reason: "missing_session_context",
+    };
   }
 
   await initializeBuyNowPixelTables();
@@ -176,8 +239,14 @@ export async function ensureBuyNowPixelInstalled(shopify, session) {
     [shop]
   );
 
-  if (existingPixel?.web_pixel_id) {
-    return existingPixel.web_pixel_id;
+  if (existingPixel?.web_pixel_id && !force) {
+    return {
+      ok: true,
+      action: "cached",
+      shop,
+      webPixelId: existingPixel.web_pixel_id,
+      userErrors: [],
+    };
   }
 
   const gqlClient = new shopify.api.clients.Graphql({ session });
@@ -187,45 +256,64 @@ export async function ensureBuyNowPixelInstalled(shopify, session) {
   });
 
   try {
-    const response = await withShopifyRateLimit(() =>
-      gqlClient.request(
-        `#graphql
-          mutation CreateSizeBuddyBuyNowPixel($settings: JSON!) {
-            webPixelCreate(webPixel: { settings: $settings }) {
-              userErrors {
-                field
-                message
-                code
-              }
-              webPixel {
-                id
-              }
-            }
-          }
-        `,
-        {
-          variables: { settings },
-        }
-      )
-    );
+    if (existingPixel?.web_pixel_id) {
+      const updateResult = await updateBuyNowPixel(gqlClient, existingPixel.web_pixel_id, settings);
+      const updateErrors = Array.isArray(updateResult?.userErrors) ? updateResult.userErrors : [];
+      const updatedPixelId = normalizeText(updateResult?.webPixel?.id) || existingPixel.web_pixel_id;
 
-    const result = response?.data?.webPixelCreate;
-    if (Array.isArray(result?.userErrors) && result.userErrors.length > 0) {
-      console.error("Failed to create Buy it now web pixel:", result.userErrors);
-      return null;
+      if (!updateErrors.length && updatedPixelId) {
+        await upsertShopPixelRecord(db, shop, updatedPixelId);
+        return {
+          ok: true,
+          action: "updated",
+          shop,
+          webPixelId: updatedPixelId,
+          userErrors: [],
+        };
+      }
+
+      console.error("Failed to update Buy it now web pixel:", updateErrors);
     }
 
-    const webPixelId = normalizeText(result?.webPixel?.id);
-    if (!webPixelId) {
-      return null;
+    const createResult = await createBuyNowPixel(gqlClient, settings);
+    const createErrors = Array.isArray(createResult?.userErrors) ? createResult.userErrors : [];
+    const createdPixelId = normalizeText(createResult?.webPixel?.id);
+
+    if (createErrors.length > 0 || !createdPixelId) {
+      console.error("Failed to create Buy it now web pixel:", createErrors);
+      return {
+        ok: false,
+        action: existingPixel?.web_pixel_id ? "create_after_update_failed" : "create_failed",
+        shop,
+        webPixelId: createdPixelId || existingPixel?.web_pixel_id || null,
+        userErrors: createErrors,
+      };
     }
 
-    await upsertShopPixelRecord(db, shop, webPixelId);
-    return webPixelId;
+    await upsertShopPixelRecord(db, shop, createdPixelId);
+    return {
+      ok: true,
+      action: existingPixel?.web_pixel_id ? "recreated" : "created",
+      shop,
+      webPixelId: createdPixelId,
+      userErrors: [],
+    };
   } catch (error) {
     console.error("Error ensuring Buy it now web pixel:", error?.message || error);
-    return null;
+    return {
+      ok: false,
+      action: "request_failed",
+      shop,
+      webPixelId: existingPixel?.web_pixel_id || null,
+      userErrors: [],
+      reason: error?.message || String(error),
+    };
   }
+}
+
+export async function ensureBuyNowPixelInstalled(shopify, session, options = {}) {
+  const result = await syncBuyNowPixelConnection(shopify, session, options);
+  return result?.ok ? result.webPixelId : null;
 }
 
 export async function recordPixelRecommendation({

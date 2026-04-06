@@ -16,7 +16,7 @@ import sqliteStorage from "@shopify/shopify-app-session-storage-sqlite";
 const { SQLiteConnection } = sqliteStorage;
 import runMigrations from './database-migrations.js';
 
-import shopify from "./shopify.js";
+import shopify, { validateAuthenticatedSession } from "./shopify.js";
 import productCreator from "./product-creator.js";
 import CustomWebhookHandlers from "./webhooks.js";
 import analyticsRouter from "./routes/analytics.js";
@@ -924,8 +924,8 @@ if (process.env.NODE_ENV === "development") {
       return next();
     }
     
-    // For all other API routes, use standard auth
-    shopify.validateAuthenticatedSession()(req, res, next);
+    // For all other API routes, use app auth plus pixel activation.
+    validateAuthenticatedSession(req, res, next);
   });
   
   // For non-API routes in development
@@ -970,8 +970,8 @@ if (process.env.NODE_ENV === "development") {
       return next();
     }
     
-    // For all other API routes, use standard auth
-    shopify.validateAuthenticatedSession()(req, res, next);
+    // For all other API routes, use app auth plus pixel activation.
+    validateAuthenticatedSession(req, res, next);
   });
 
   // Catch-all for non-API GETs only (serve frontend)
@@ -1201,7 +1201,7 @@ async function initializeDatabase() {
 }
 
 // Get widget customization settings
-app.get("/api/widget-customization", shopify.validateAuthenticatedSession(), async (req, res) => {
+app.get("/api/widget-customization", validateAuthenticatedSession, async (req, res) => {
   try {
     const session = res.locals.shopify.session;
     const shop = req.query.shop || (session && session.shop);
@@ -1261,7 +1261,7 @@ app.get("/api/widget-customization", shopify.validateAuthenticatedSession(), asy
 });
 
 // Update widget customization settings
-app.put("/api/widget-customization", shopify.validateAuthenticatedSession(), async (req, res) => {
+app.put("/api/widget-customization", validateAuthenticatedSession, async (req, res) => {
   try {
     // Ensure database is initialized
     if (!app.locals.db) {

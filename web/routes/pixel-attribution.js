@@ -1,13 +1,26 @@
 import { Router } from "express";
+import shopify, { validateAuthenticatedSession } from "../shopify.js";
 import {
   initializeBuyNowPixelTables,
   recordPixelCheckoutPurchases,
   recordPixelRecommendation,
+  syncBuyNowPixelConnection,
 } from "../utils/buyNowPixel.js";
 
 const router = Router();
 
 initializeBuyNowPixelTables().catch(console.error);
+
+router.post("/api/pixel/connect", validateAuthenticatedSession, async (_req, res) => {
+  try {
+    const session = res.locals.shopify?.session;
+    const result = await syncBuyNowPixelConnection(shopify, session, { force: true });
+    return res.status(result?.ok ? 200 : 500).json(result);
+  } catch (error) {
+    console.error("Error force-connecting Buy it now pixel:", error);
+    return res.status(500).json({ error: "Failed to connect pixel" });
+  }
+});
 
 router.post("/api/pixel/recommendation", async (req, res) => {
   try {
