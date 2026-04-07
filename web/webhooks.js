@@ -4,6 +4,7 @@ import { getDb } from './db.js';
 import {
   clearPendingPixelPurchase,
   getPendingPixelPurchase,
+  markRecommendationAsAddedToCart,
 } from "./utils/buyNowPixel.js";
 
 function getLineItemProperty(lineItem, key) {
@@ -206,6 +207,12 @@ const CustomWebhookHandlers = {
               item.currency,
             ]
           );
+
+          await markRecommendationAsAddedToCart(db, {
+            shop,
+            recommendationToken: item.recommendationToken,
+            variantId: item.variantId,
+          });
 
           if (item.usedPendingPixelFallback) {
             await clearPendingPixelPurchase({

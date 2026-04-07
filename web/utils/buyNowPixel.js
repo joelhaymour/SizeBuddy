@@ -168,6 +168,32 @@ export function normalizeBuyNowVariantId(value) {
   return normalizeId(value);
 }
 
+export async function markRecommendationAsAddedToCart(db, {
+  shop,
+  recommendationToken,
+  variantId,
+}) {
+  const normalizedShop = normalizeText(shop);
+  const normalizedRecommendationToken = normalizeText(recommendationToken);
+  const normalizedVariantId = normalizeId(variantId);
+
+  if (!normalizedShop || !normalizedRecommendationToken) {
+    return { changes: 0 };
+  }
+
+  return db.run(
+    `UPDATE size_recommendation_analytics
+     SET added_to_cart_at = COALESCE(added_to_cart_at, CURRENT_TIMESTAMP),
+         variant_id = COALESCE(variant_id, ?)
+     WHERE shop = ? AND recommendation_token = ?`,
+    [
+      normalizedVariantId || null,
+      normalizedShop,
+      normalizedRecommendationToken,
+    ]
+  );
+}
+
 export async function initializeBuyNowPixelTables() {
   if (!initializationPromise) {
     initializationPromise = (async () => {
@@ -435,6 +461,12 @@ export async function recordPixelCheckoutPurchases({
         lineItemCurrency,
       ]
     );
+
+    await markRecommendationAsAddedToCart(db, {
+      shop: normalizedShop,
+      recommendationToken: recommendation.recommendation_token,
+      variantId: normalizedVariantId,
+    });
 
     await clearPendingPixelPurchase({
       shop: normalizedShop,
