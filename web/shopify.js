@@ -1,6 +1,5 @@
 import { ApiVersion, BillingInterval } from "@shopify/shopify-api";
 import { shopifyApp } from "@shopify/shopify-app-express";
-import { SQLiteSessionStorage } from "@shopify/shopify-app-session-storage-sqlite";
 import { RedisSessionStorage } from "@shopify/shopify-app-session-storage-redis";
 import dotenv from 'dotenv';
 import { ensureBuyNowPixelInstalled } from "./utils/buyNowPixel.js";
@@ -45,9 +44,13 @@ const billingConfig = {
 
 // Choose session storage based on env: Redis in prod if REDIS_URL provided, SQLite otherwise
 const useRedis = !!process.env.REDIS_URL;
-const sessionStorage = useRedis
-  ? new RedisSessionStorage(process.env.REDIS_URL)
-  : new SQLiteSessionStorage(DB_PATH);
+let sessionStorage;
+if (useRedis) {
+  sessionStorage = new RedisSessionStorage(process.env.REDIS_URL);
+} else {
+  const { SQLiteSessionStorage } = await import("@shopify/shopify-app-session-storage-sqlite");
+  sessionStorage = new SQLiteSessionStorage(DB_PATH);
+}
 
 const shopify = shopifyApp({
   api: {

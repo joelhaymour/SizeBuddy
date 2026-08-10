@@ -4,12 +4,9 @@ import express from "express";
 import serveStatic from "serve-static";
 import dotenv from 'dotenv';
 import { createProxyMiddleware } from 'http-proxy-middleware';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import runMigrations from './database-migrations.js';
 
 import shopify, { validateAuthenticatedSession } from "./shopify.js";
 import productCreator from "./product-creator.js";
@@ -1122,6 +1119,11 @@ async function initializeDatabase() {
 
   // Development: SQLite with local schema
   const dbFile = join(process.cwd(), "database.sqlite");
+  const [{ open }, { default: sqlite3 }, { default: runMigrations }] = await Promise.all([
+    import('sqlite'),
+    import('sqlite3'),
+    import('./database-migrations.js'),
+  ]);
   const db = await open({ filename: dbFile, driver: sqlite3.Database });
   await db.exec(`
     CREATE TABLE IF NOT EXISTS size_charts (

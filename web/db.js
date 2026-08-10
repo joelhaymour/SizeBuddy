@@ -1,4 +1,3 @@
-import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import pg from 'pg';
 
@@ -28,6 +27,7 @@ function getPostgresPool() {
 
 export async function getDb() {
   if (!isPostgres) {
+    const { default: sqlite3 } = await import('sqlite3');
     return open({ filename: `${process.cwd()}/database.sqlite`, driver: sqlite3.Database });
   }
 
