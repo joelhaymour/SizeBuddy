@@ -1,8 +1,7 @@
-import { BillingInterval, LATEST_API_VERSION } from "@shopify/shopify-api";
+import { ApiVersion, BillingInterval } from "@shopify/shopify-api";
 import { shopifyApp } from "@shopify/shopify-app-express";
 import { SQLiteSessionStorage } from "@shopify/shopify-app-session-storage-sqlite";
 import { RedisSessionStorage } from "@shopify/shopify-app-session-storage-redis";
-import { restResources } from "@shopify/shopify-api/rest/admin/2025-01";
 import dotenv from 'dotenv';
 import { ensureBuyNowPixelInstalled } from "./utils/buyNowPixel.js";
 
@@ -16,6 +15,7 @@ console.log('HOST:', process.env.HOST);
 console.log('SCOPES:', process.env.SCOPES);
 
 const DB_PATH = `${process.cwd()}/database.sqlite`;
+const API_VERSION = ApiVersion.January25;
 
 // Define scopes explicitly
 const SCOPES = [
@@ -46,18 +46,17 @@ const billingConfig = {
 // Choose session storage based on env: Redis in prod if REDIS_URL provided, SQLite otherwise
 const useRedis = !!process.env.REDIS_URL;
 const sessionStorage = useRedis
-  ? new RedisSessionStorage(process.env.REDIS_URL, { ttl: 60 * 60 * 24 * 14 })
+  ? new RedisSessionStorage(process.env.REDIS_URL)
   : new SQLiteSessionStorage(DB_PATH);
 
 const shopify = shopifyApp({
   api: {
     apiKey: process.env.SHOPIFY_API_KEY,
     apiSecretKey: process.env.SHOPIFY_API_SECRET,
-    apiVersion: LATEST_API_VERSION,
+    apiVersion: API_VERSION,
     hostName: process.env.HOST.replace(/https?:\/\//, ''),
     scopes: SCOPES,
     isEmbeddedApp: true,
-    restResources,
     future: {
       customerAddressDefaultFix: true,
       lineItemBilling: true,
@@ -73,13 +72,16 @@ const shopify = shopifyApp({
   webhooks: {
     path: "/api/webhooks",
   },
+  future: {
+    expiringOfflineAccessTokens: true,
+  },
   sessionStorage,
   useOnlineTokens: true
 });
 
 // Debug logging
 console.log('Shopify configuration:');
-console.log('API Version:', LATEST_API_VERSION);
+console.log('API Version:', API_VERSION);
 console.log('Host Name:', process.env.HOST.replace(/https?:\/\//, ''));
 console.log('Auth Path:', shopify.config.auth.path);
 console.log('Callback Path:', shopify.config.auth.callbackPath);

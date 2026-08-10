@@ -41,22 +41,15 @@ export async function fetchProductVariantsForStorefront(shop, productId) {
   const shopDomain = normalizeShopDomain(shop);
   if (!shopDomain || !productId) return [];
 
-  const sessionStorage = shopify.config?.sessionStorage;
-  if (!sessionStorage || typeof sessionStorage.findSessionsByShop !== 'function') {
-    console.warn('Size Buddy: Shopify session storage is unavailable for variant lookup');
-    return [];
-  }
-
-  let sessions = [];
+  let session;
   try {
-    sessions = await sessionStorage.findSessionsByShop(shopDomain);
+    session = await shopify.ensureValidOfflineSession(shopDomain);
   } catch (error) {
-    console.warn('Size Buddy: unable to load Shopify sessions for variant lookup', error);
+    console.warn('Size Buddy: unable to refresh Shopify session for variant lookup', error);
     return [];
   }
 
-  const session = (sessions || []).find(item => item && item.accessToken) || null;
-  if (!session) {
+  if (!session?.accessToken) {
     console.warn('Size Buddy: no Shopify session available for variant lookup', { shopDomain, productId });
     return [];
   }

@@ -266,8 +266,7 @@ router.post('/api/billing/redirect', async (req, res) => {
     let sessionForAdmin = sessionFromMiddleware && sessionFromMiddleware.accessToken ? sessionFromMiddleware : null;
     if (!sessionForAdmin) {
       try {
-        const sessions = await shopify.sessionStorage.findSessionsByShop(resolvedShop);
-        sessionForAdmin = (sessions || []).find(s => s && s.accessToken) || null;
+        sessionForAdmin = await shopify.ensureValidOfflineSession(resolvedShop);
       } catch {}
     }
     if (!sessionForAdmin) {
@@ -279,19 +278,18 @@ router.post('/api/billing/redirect', async (req, res) => {
       return res.status(401).json({ error: 'No session token for admin API' });
     }
     const gqlClient = new shopify.api.clients.Graphql({ session: sessionForAdmin });
-    const resp = await withShopifyRateLimit(() => gqlClient.request({
-      data: {
-        query: mutation,
-        variables: {
-          name: `${planName} plan`,
-          returnUrl,
-          lineItems: [
-            { plan: { appRecurringPricingDetails: { interval: 'EVERY_30_DAYS', price: { amount, currencyCode: 'USD' } } } }
-          ]
-        }
+    const resp = await withShopifyRateLimit(() => gqlClient.request(mutation, {
+      variables: {
+        name: `${planName} plan`,
+        returnUrl,
+        lineItems: [
+          { plan: { appRecurringPricingDetails: { interval: 'EVERY_30_DAYS', price: { amount, currencyCode: 'USD' } } } }
+        ]
       }
     }));
-    const url = resp?.body?.data?.appSubscriptionCreate?.confirmationUrl;
+    const url =
+      resp?.data?.appSubscriptionCreate?.confirmationUrl ||
+      resp?.body?.data?.appSubscriptionCreate?.confirmationUrl;
     if (!url) return res.status(500).json({ error: 'No confirmation url', resp });
     return res.json({ url });
   } catch (e) {

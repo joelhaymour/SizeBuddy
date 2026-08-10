@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import crypto from 'crypto';
 import { readFileSync } from 'fs';
 import path from 'path';
 import shopify from '../shopify.js';
@@ -23,53 +22,28 @@ function normalizeAndFilterChartSizes(sizes = []) {
 }
 
 // Verify the app proxy signature
-const verifyAppProxySignature = (req, res, next) => {
-  const { signature, ...params } = req.query;
-  
+const verifyAppProxySignature = async (req, res, next) => {
   console.log('App Proxy Request:', {
     path: req.path,
-    query: req.query,
-    fullUrl: req.originalUrl
   });
-  
-  if (!signature) {
-    return res.status(401).send({ error: 'Signature missing' });
-  }
 
-  // Get the app's API secret from environment variables
-  const secret = process.env.SHOPIFY_API_SECRET;
-  
-  if (!secret) {
-    console.error('SHOPIFY_API_SECRET is not set in environment variables');
-    return res.status(500).send({ error: 'Server configuration error' });
-  }
+  try {
+    // Validate the raw query so duplicate security-sensitive parameters aren't
+    // collapsed by Express before Shopify's hardened validator sees them.
+    const query = new URL(req.originalUrl, 'https://size-buddy.invalid').searchParams;
+    const isValid = await shopify.api.utils.validateHmac(query, {
+      signator: 'appProxy',
+    });
 
-  // Sort the parameters
-  const sortedParams = Object.keys(params)
-    .sort()
-    .reduce((acc, key) => {
-      acc[key] = params[key];
-      return acc;
-    }, {});
+    if (!isValid) {
+      return res.status(401).send({ error: 'Invalid signature' });
+    }
 
-  // Create a string of key=value pairs
-  const queryString = Object.keys(sortedParams)
-    .map(key => `${key}=${sortedParams[key]}`)
-    .join('');
-
-  // Calculate the HMAC
-  const hmac = crypto
-    .createHmac('sha256', secret)
-    .update(queryString)
-    .digest('hex');
-
-  // Compare the calculated HMAC with the provided signature
-  if (hmac !== signature) {
+    next();
+  } catch (error) {
+    console.warn('App proxy signature validation failed:', error.message);
     return res.status(401).send({ error: 'Invalid signature' });
   }
-
-  // If the signature is valid, proceed to the next middleware
-  next();
 };
 
 // Simple test endpoint that logs all information (development only)
@@ -545,18 +519,8 @@ router.post('/api/proxy/log-add-to-cart', verifyAppProxySignature, async (req, r
   }
 });
 
-// Optional signature verification: skip for GET size-charts when product_id + shop are present (storefront often gets 400 otherwise)
-const optionalAppProxySignature = (req, res, next) => {
-  const hasProductId = !!req.query.product_id;
-  const hasShop = !!(Array.isArray(req.query.shop) ? req.query.shop[0] : req.query.shop);
-  if (req.method === 'GET' && hasProductId && hasShop) {
-    return next(); // allow through without signature so storefront works
-  }
-  return verifyAppProxySignature(req, res, next);
-};
-
 // Get size chart data for a product (main endpoint for widget)
-router.get('/size-charts', optionalAppProxySignature, async (req, res) => {
+router.get('/size-charts', verifyAppProxySignature, async (req, res) => {
   const { product_id } = req.query;
   const normalizeHeaderHost = (value) => {
     const raw = Array.isArray(value) ? value[0] : value;

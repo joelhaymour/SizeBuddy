@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 # Install system deps needed for sqlite3/node-gyp prebuilds
 RUN apt-get update && apt-get install -y --no-install-recommends \

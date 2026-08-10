@@ -9,11 +9,6 @@ import { open } from 'sqlite';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import cookieParser from "cookie-parser";
-import * as shopifyApi from "@shopify/shopify-api";
-const { Shopify } = shopifyApi;
-import sqliteStorage from "@shopify/shopify-app-session-storage-sqlite";
-const { SQLiteConnection } = sqliteStorage;
 import runMigrations from './database-migrations.js';
 
 import shopify, { validateAuthenticatedSession } from "./shopify.js";
@@ -865,7 +860,7 @@ app.get(
 app.post(shopify.config.webhooks.path, shopify.processWebhooks({ webhookHandlers: CustomWebhookHandlers }));
 
 // Add a permissive preflight handler for our API routes (Shopify OAuth redirects trigger OPTIONS)
-app.options('*', (req, res) => {
+app.options('/{*path}', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.HOST || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Shopify-Access-Token');
@@ -913,7 +908,7 @@ if (process.env.NODE_ENV === "development") {
   ];
 
   // API routes require authentication EXCEPT size-recommendations
-  app.use("/api/*", (req, res, next) => {
+  app.use("/api", (req, res, next) => {
     // req.path is relative to the /api mount, so use originalUrl for the full request path.
     if (req.originalUrl.startsWith('/api/size-recommendations')) {
       const resolvedShop = req.query.shop || req.body?.shop;
@@ -959,7 +954,7 @@ if (process.env.NODE_ENV === "development") {
   app.use(serveStatic(STATIC_PATH, { index: false }));
   
   // API routes require authentication EXCEPT size-recommendations
-  app.use("/api/*", (req, res, next) => {
+  app.use("/api", (req, res, next) => {
     // req.path is relative to the /api mount, so use originalUrl for the full request path.
     if (req.originalUrl.startsWith('/api/size-recommendations')) {
       const resolvedShop = req.query.shop || req.body?.shop;

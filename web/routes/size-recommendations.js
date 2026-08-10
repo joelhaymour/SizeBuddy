@@ -173,8 +173,7 @@ async function syncActivePlanForShop(shop, db) {
   let plan = (await db.get('SELECT plan FROM subscriptions WHERE shop = ?', [shop]))?.plan || 'Free';
 
   try {
-    const sessions = await shopify.sessionStorage.findSessionsByShop(shop);
-    const sessionForSync = (sessions || []).find((session) => session && session.accessToken) || null;
+    const sessionForSync = await shopify.ensureValidOfflineSession(shop);
 
     if (sessionForSync?.accessToken) {
       const syncedPlan = await syncPlanFromShopify(shop, sessionForSync);
